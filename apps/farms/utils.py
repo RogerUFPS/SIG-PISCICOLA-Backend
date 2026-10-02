@@ -46,3 +46,22 @@ def assign_role_to_operario(user_farm: UserFarm, role: FarmRole) -> None:
     user_farm.farm_role = role
     user_farm.permissions = int(role.permissions)
     user_farm.save(update_fields=["farm_role", "permissions"])
+
+
+def farm_has_active_resources(farm) -> bool:
+    from apps.cycle.models import Cycle
+    from apps.ponds.models import Pond
+
+    return (
+        Cycle.objects.filter(
+            farm=farm,
+            deleted_at__isnull=True,
+            state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
+        ).exists()
+        or Pond.objects.filter(
+            farm=farm,
+            deleted_at__isnull=True,
+        )
+        .exclude(status=Pond.Status.INACTIVE)
+        .exists()
+    )

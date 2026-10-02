@@ -9,7 +9,12 @@ from apps.farms.permissions import (CanManageFarmUsers, CanManagePond,
 
 from .models import Pond, UserFarmPond
 from .serializers import PondSerializer, UserFarmPondSerializer
-from .utils import get_pond_or_404, remove_pond_member, soft_delete_pond
+from .utils import (
+    get_pond_or_404,
+    pond_has_cycles,
+    remove_pond_member,
+    soft_delete_pond,
+)
 
 
 def _get_farm(farm_id):
@@ -257,11 +262,12 @@ class PondInactivateView(APIView):
         if not pond:
             return _pond_not_found_response()
 
-        # Evitar inactivar un estanque en uso
-        if pond.status == Pond.Status.IN_USE:
+        if pond_has_cycles(pond):
             return Response(
-                {"detail": "No se puede inactivar un estanque que está en uso. Debe terminar los ciclos y lotes activos primero."},
-                status=status.HTTP_400_BAD_REQUEST
+                {
+                    "detail": "No se puede inactivar un estanque que tiene ciclos asociados."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         pond.status = Pond.Status.INACTIVE

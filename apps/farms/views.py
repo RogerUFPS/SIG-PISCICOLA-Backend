@@ -13,7 +13,11 @@ from .permissions import (CanManageFarm, CanManageFarmUsers, IsFarmMember,
 from .serializers import (CitySerializer, DepartmentSerializer,
                           FarmRoleSerializer, FarmSerializer,
                           UserFarmSerializer)
-from .utils import assign_operario_permissions, assign_role_to_operario
+from .utils import (
+    assign_operario_permissions,
+    assign_role_to_operario,
+    farm_has_active_resources,
+)
 
 
 class DepartmentListView(generics.ListAPIView):
@@ -82,19 +86,16 @@ class FarmViewSet(viewsets.ModelViewSet):
         )
 
     def destroy(self, request, *args, **kwargs):
-        from apps.cycle.models import Cycle
-
         farm = self.get_object()
 
-        any_cycle = Cycle.objects.filter(farm=farm, deleted_at__isnull=True).exists()
-
-        if any_cycle:
-            cycle_count = Cycle.objects.filter(
-                farm=farm, deleted_at__isnull=True
-            ).count()
+        if farm_has_active_resources(farm):
             return Response(
                 {
-                    "detail": f"No se puede eliminar la granja porque tiene {cycle_count} ciclo(s) registrado(s). Elimine o cancele los ciclos primero."
+                    "detail": (
+                        "No se puede eliminar la granja porque tiene ciclos o "
+                        "estanques activos. Finalice los ciclos e inactive los "
+                        "estanques primero."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
