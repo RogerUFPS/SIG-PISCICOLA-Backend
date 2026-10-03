@@ -79,6 +79,68 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
     #        _, biomass_kg = self._calculate_evaluation_biomass(obj)
     #        return biomass_kg
 
+    def _resolve_cycle_and_pond(self, data):
+        """
+        cycle/pond son read_only, por eso no vienen en `data` al crear.
+        Se buscan en: data -> instance -> context -> initial_data.
+        """
+        cycle = data.get("cycle") or (self.instance.cycle if self.instance else None)
+        pond = data.get("pond") or (self.instance.pond if self.instance else None)
+
+        if cycle is None:
+            cycle = self.context.get("cycle")
+        if pond is None:
+            pond = self.context.get("pond")
+
+        initial = getattr(self, "initial_data", {}) or {}
+        if cycle is None:
+            cycle_id = initial.get("cycle") or initial.get("cycle_id")
+            if cycle_id:
+                cycle = Cycle.objects.filter(id=cycle_id).first()
+        if pond is None:
+            pond_id = initial.get("pond") or initial.get("pond_id")
+            if pond_id:
+                pond = Pond.objects.filter(id=pond_id).first()
+
+        # Cada ciclo es de UN solo estanque: si falta pond, se toma del ciclo
+        if pond is None and cycle is not None:
+            pond = cycle.pond
+
+        return cycle, pond
+
+    def _get_available_live_quantity(self, cycle, pond):
+        """
+        Peces vivos disponibles ANTES de aplicar esta evaluación.
+        Fuente principal: último ControlStat del ciclo/estanque.
+        Fallback (no hay ControlStat aún): suma de current_quantity de los PondBatch activos.
+        """
+        last_control = (
+            ControlStat.objects.filter(
+                cycle_id=cycle.id,
+                pond_id=pond.id,
+                deleted_at__isnull=True,
+            )
+            .order_by("-control_date", "-id")
+            .first()
+        )
+
+        if last_control is not None:
+            live_available = last_control.live_quantity
+            # En update, si el ControlStat más reciente es el de esta misma
+            # evaluación, su live_quantity ya descontó su mortalidad: se devuelve.
+            if (
+                self.instance
+                and last_control.control_date == self.instance.evaluation_date
+            ):
+                live_available += self.instance.mortality_quantity
+            return live_available
+
+        cpbs = self._get_active_cycle_pond_batches(cycle, pond)
+        live_available = sum(cpb.pond_batch.current_quantity for cpb in cpbs)
+        if self.instance:
+            live_available += self.instance.mortality_quantity
+        return live_available
+
     def _get_control_stat(self, obj):
         return ControlStat.objects.filter(
             cycle_id=obj.cycle_id,
@@ -296,80 +358,101 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
                 "deleted_at": None,
             },
         )
-
     def validate(self, data):
-        cycle = data.get("cycle") or (self.instance.cycle if self.instance else None)
-        pond = data.get("pond") or (self.instance.pond if self.instance else None)
-        evaluation_date = data.get("evaluation_date") or (
-            self.instance.evaluation_date if self.instance else None
+        cycle, pond = self._resolve_cycle_and_pond(data)
+
+        evaluation_date = data.get(
+            "evaluation_date",
+            self.instance.evaluation_date if self.instance else None,
         )
-        sampled_quantity = data.get("sampled_quantity") or (
-            self.instance.sampled_quantity if self.instance else None
+        sampled_quantity = data.get(
+            "sampled_quantity",
+            self.instance.sampled_quantity if self.instance else None,
         )
-        mortality_quantity = data.get("mortality_quantity") or (
-            self.instance.mortality_quantity if self.instance else 0
+        mortality_quantity = data.get(
+            "mortality_quantity",
+            self.instance.mortality_quantity if self.instance else 0,
         )
         batch_id = data.get("batch_id")
 
-        # Validar que el ciclo existe y está IN_PROGRESS
-        if cycle:
-            if cycle.state != Cycle.State.IN_PROGRESS:
+        # En creación, cycle y pond son obligatorios para poder validar
+        if not self.instance:
+            if cycle is None:
                 raise serializers.ValidationError(
-                    {"cycle": "El ciclo debe estar en estado IN_PROGRESS."}
+                    {"cycle": "No se pudo determinar el ciclo de la evaluación."}
+                )
+            if pond is None:
+                raise serializers.ValidationError(
+                    {"pond": "No se pudo determinar el estanque de la evaluación."}
                 )
 
-        # Validar que el estanque existe y está IN_USE
-        if pond:
-            if pond.status != Pond.Status.IN_USE:
-                raise serializers.ValidationError(
-                    {"pond": "El estanque debe estar en estado IN_USE."}
-                )
+        # Ciclo IN_PROGRESS
+        if cycle and cycle.state != Cycle.State.IN_PROGRESS:
+            raise serializers.ValidationError(
+                {"cycle": "El ciclo debe estar en estado IN_PROGRESS."}
+            )
 
-        # Validar que el estanque está asociado al ciclo
+        # Estanque IN_USE
+        if pond and pond.status != Pond.Status.IN_USE:
+            raise serializers.ValidationError(
+                {"pond": "El estanque debe estar en estado IN_USE."}
+            )
+
+        # Estanque asociado al ciclo
+        active_cpbs = []
         if cycle and pond:
-            cpb_exists = CyclePondBatch.objects.filter(
-                cycle=cycle,
-                pond_batch__pond=pond,
-                pond_batch__end_date__isnull=True,
-            ).exists()
-            if not cpb_exists:
+            active_cpbs = self._get_active_cycle_pond_batches(cycle, pond)
+            if not active_cpbs:
                 raise serializers.ValidationError(
                     {"pond": "El estanque no está asociado a este ciclo."}
                 )
 
-        # Validar cantidad muestreada > 0
+        # Cantidad muestreada > 0
         if sampled_quantity is not None and sampled_quantity <= 0:
             raise serializers.ValidationError(
-                {
-                    "sampled_quantity": "La cantidad de peces evaluados debe ser mayor a 0."
-                }
+                {"sampled_quantity": "La cantidad de peces evaluados debe ser mayor a 0."}
             )
 
-        # Validar mortalidad <= muestra
+        # Mortalidad <= muestra
         if (
             sampled_quantity is not None
             and mortality_quantity is not None
             and mortality_quantity > sampled_quantity
         ):
             raise serializers.ValidationError(
-                {
-                    "mortality_quantity": "La mortalidad no puede ser mayor a la cantidad muestreada."
-                }
+                {"mortality_quantity": "La mortalidad no puede ser mayor a la cantidad muestreada."}
             )
 
-        # Validar que la fecha de evaluación <= hoy
+        # Fecha <= hoy
         if evaluation_date and evaluation_date > date.today():
             raise serializers.ValidationError(
                 {"evaluation_date": "La fecha de evaluación no puede ser futura."}
             )
 
-        # Si se especifica batch_id y mortalidad es 100%, es válido (cambiar a DEAD)
-        # Si se especifica batch_id pero mortalidad < 100%, se descuenta solo de ese batch
-        # Si NO se especifica batch_id, se descuenta proporcionalmente de todos
+        # batch_id existe y está activo en este ciclo/estanque
         if batch_id:
             if not Batch.objects.filter(id=batch_id).exists():
                 raise serializers.ValidationError(
                     {"batch_id": "El batch especificado no existe."}
+                )
+            if active_cpbs and not any(
+                cpb.pond_batch.batch_id == batch_id for cpb in active_cpbs
+            ):
+                raise serializers.ValidationError(
+                    {"batch_id": "El lote especificado no está activo en este ciclo y estanque."}
+                )
+
+        # Muestra <= peces vivos (según ControlStat)
+        if cycle and pond and sampled_quantity is not None:
+            live_available = self._get_available_live_quantity(cycle, pond)
+            if sampled_quantity > live_available:
+                raise serializers.ValidationError(
+                    {
+                        "sampled_quantity": (
+                            f"La cantidad muestreada ({sampled_quantity}) supera "
+                            f"los peces vivos disponibles ({live_available})."
+                        )
+                    }
                 )
 
         return data
