@@ -230,11 +230,11 @@ class CycleSerializer(serializers.ModelSerializer):
                 }
             )
 
-        if state == Cycle.State.IN_PROGRESS:
+        if state in [Cycle.State.IN_PROGRESS, Cycle.State.PAUSED]:
             ciclo_activo = (
                 Cycle.objects.filter(
                     farm=farm,
-                    state=Cycle.State.IN_PROGRESS,
+                    state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
                     deleted_at__isnull=True,
                 )
                 .exclude(pk=self.instance.pk if self.instance else None)
