@@ -15,7 +15,6 @@ class ActiveCycleValidationTests(SimpleTestCase):
         self._assert_second_active_cycle_rejected(Cycle.State.PAUSED)
 
     def _assert_second_active_cycle_rejected(self, requested_state):
-        farm = MagicMock(id=10)
         active_cycles = MagicMock()
         active_cycles.exclude.return_value.exists.return_value = True
 
@@ -24,12 +23,12 @@ class ActiveCycleValidationTests(SimpleTestCase):
             return_value=active_cycles,
         ) as cycle_filter:
             with self.assertRaises(serializers.ValidationError):
-                CycleSerializer().validate(
-                    {"farm": farm, "state": requested_state}
+                CycleSerializer(context={"pond_id": 20}).validate(
+                    {"state": requested_state}
                 )
 
         cycle_filter.assert_called_once_with(
-            farm=farm,
+            pond_id=20,
             state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
             deleted_at__isnull=True,
         )

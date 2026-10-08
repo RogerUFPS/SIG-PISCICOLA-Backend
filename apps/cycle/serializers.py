@@ -195,7 +195,16 @@ class CycleSerializer(serializers.ModelSerializer):
         from apps.batch.models import Batch
         from apps.monitoring.services import CycleStateCalculator
 
-        farm = data.get("farm") or (self.instance.farm if self.instance else None)
+        farm = (
+            data.get("farm")
+            or (self.instance.farm if self.instance else None)
+            or self.context.get("farm")
+        )
+        pond_id = (
+            data.get("pond").id
+            if data.get("pond")
+            else (self.instance.pond_id if self.instance else None)
+        ) or self.context.get("pond_id")
         specie = data.get("specie") or (self.instance.specie if self.instance else None)
         production_plan = data.get("production_plan") or (
             self.instance.production_plan if self.instance else None
@@ -233,7 +242,7 @@ class CycleSerializer(serializers.ModelSerializer):
         if state in [Cycle.State.IN_PROGRESS, Cycle.State.PAUSED]:
             ciclo_activo = (
                 Cycle.objects.filter(
-                    farm=farm,
+                    pond_id=pond_id,
                     state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
                     deleted_at__isnull=True,
                 )
@@ -243,7 +252,8 @@ class CycleSerializer(serializers.ModelSerializer):
 
             if ciclo_activo:
                 raise serializers.ValidationError(
-                    "Ya existe un ciclo activo en esta granja. No se pueden crear dos ciclos activos simultáneamente."
+                    "Ya existe un ciclo activo en este estanque. "
+                    "No se pueden crear dos ciclos activos simultáneamente."
                 )
 
         if start_date and estimated_finish_date:
