@@ -1,4 +1,6 @@
 # models.py
+import uuid
+
 from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager,
                                         PermissionsMixin)
 from django.db import models
@@ -15,6 +17,25 @@ class Role(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class UserSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="jwt_sessions",
+    )
+    last_activity = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "user_session"
+        indexes = [
+            models.Index(fields=["user", "revoked_at"]),
+            models.Index(fields=["expires_at"]),
+        ]
 
 
 class UserManager(BaseUserManager):

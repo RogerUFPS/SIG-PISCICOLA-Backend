@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import AdminOr
+from apps.accounts.permissions import AdminOr, AppPermission
 from apps.farms.permissions import CanManageCycle, IsFarmMember
 
 from .models import FeedingEvent, FeedingPlan, FeedingSchedule
@@ -136,7 +136,7 @@ class FeedingOptionsView(APIView):
     GET sin farm_id: solo expone opciones definidas en modelos ``feeding``.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, AppPermission]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):

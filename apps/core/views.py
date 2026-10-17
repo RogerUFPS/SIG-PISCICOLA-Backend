@@ -1,13 +1,13 @@
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
-from ..accounts.permissions import IsAdmin
+from ..accounts.permissions import AppPermission, IsAdmin
 from .models import Alert, AuditLog, Unit
 from .seralizers import AlertSerializer, AuditLogSerializer, UnitSerializer
 
 
 class UnitView(viewsets.ModelViewSet):
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny, AppPermission]
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
 

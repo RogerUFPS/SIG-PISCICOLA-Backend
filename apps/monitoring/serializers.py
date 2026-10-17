@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.batch.models import Batch, PondBatch
@@ -358,6 +359,38 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
                 "deleted_at": None,
             },
         )
+
+    def _refresh_cycle_control_stats_from(self, cycle, pond, start_date):
+        evaluations = (
+            FishEvaluated.objects.filter(
+                cycle=cycle,
+                pond=pond,
+                evaluation_date__gte=start_date,
+                deleted_at__isnull=True,
+            )
+            .order_by("evaluation_date", "updated_at", "id")
+        )
+        latest_by_date = {}
+        for evaluation in evaluations:
+            latest_by_date[evaluation.evaluation_date] = evaluation
+
+        control_stats = ControlStat.objects.filter(
+            cycle=cycle,
+            pond=pond,
+            control_date__gte=start_date,
+            deleted_at__isnull=True,
+        )
+        deleted_at = timezone.now()
+        if latest_by_date:
+            control_stats.exclude(
+                control_date__in=latest_by_date
+            ).update(deleted_at=deleted_at)
+        else:
+            control_stats.update(deleted_at=deleted_at)
+
+        for evaluation in latest_by_date.values():
+            self._refresh_cycle_control_stat(evaluation, ignore_same_day=True)
+
     def validate(self, data):
         cycle, pond = self._resolve_cycle_and_pond(data)
 
@@ -372,6 +405,12 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
         mortality_quantity = data.get(
             "mortality_quantity",
             self.instance.mortality_quantity if self.instance else 0,
+        )
+        min_weight_g = data.get(
+            "min_weight_g", self.instance.min_weight_g if self.instance else None
+        )
+        max_weight_g = data.get(
+            "max_weight_g", self.instance.max_weight_g if self.instance else None
         )
         batch_id = data.get("batch_id")
 
@@ -429,6 +468,38 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
                 {"evaluation_date": "La fecha de evaluación no puede ser futura."}
             )
 
+        if cycle and evaluation_date and evaluation_date < cycle.start_date:
+            raise serializers.ValidationError(
+                {
+                    "evaluation_date": (
+                        "La fecha de evaluación no puede ser anterior al inicio del ciclo."
+                    )
+                }
+            )
+
+        if (
+            cycle
+            and evaluation_date
+            and cycle.finish_date
+            and evaluation_date > cycle.finish_date
+        ):
+            raise serializers.ValidationError(
+                {
+                    "evaluation_date": (
+                        "La fecha de evaluación no puede ser posterior a la finalización del ciclo."
+                    )
+                }
+            )
+
+        if (
+            min_weight_g is not None
+            and max_weight_g is not None
+            and min_weight_g > max_weight_g
+        ):
+            raise serializers.ValidationError(
+                {"min_weight_g": "El peso mínimo no puede ser mayor que el peso máximo."}
+            )
+
         # batch_id existe y está activo en este ciclo/estanque
         if batch_id:
             if not Batch.objects.filter(id=batch_id).exists():
@@ -451,6 +522,16 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
                         "sampled_quantity": (
                             f"La cantidad muestreada ({sampled_quantity}) supera "
                             f"los peces vivos disponibles ({live_available})."
+                        )
+                    }
+                )
+            minimum_sample = (live_available * 3 + 99) // 100
+            if sampled_quantity < minimum_sample:
+                raise serializers.ValidationError(
+                    {
+                        "sampled_quantity": (
+                            f"La muestra debe incluir al menos el 3% de los peces "
+                            f"vivos disponibles ({minimum_sample} de {live_available})."
                         )
                     }
                 )
