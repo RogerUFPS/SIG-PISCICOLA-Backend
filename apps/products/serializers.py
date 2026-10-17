@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import Product, Supplier, TypeProduct
@@ -66,6 +68,13 @@ class SupplierSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["farm", "created_at", "updated_at"]
+
+    def validate_phone(self, value):
+        if value and not re.fullmatch(r"[0-9]{10}", value):
+            raise serializers.ValidationError(
+                "El teléfono del proveedor debe contener exactamente 10 dígitos."
+            )
+        return value
 
     def validate(self, attrs):
         farm_id = self.context["view"].kwargs.get("farm_pk")
