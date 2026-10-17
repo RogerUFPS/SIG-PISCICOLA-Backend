@@ -56,7 +56,11 @@ MIDDLEWARE = [
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.SessionJWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+        "apps.accounts.permissions.AppPermission",
     ),
 }
 
@@ -86,9 +90,16 @@ AUTHENTICATION_BACKENDS = [
     "apps.accounts.backends.LockableModelBackend",
 ]
 
+JWT_IDLE_TIMEOUT = timedelta(
+    minutes=int(os.getenv("JWT_IDLE_TIMEOUT_MINUTES", "15"))
+)
+JWT_SESSION_ABSOLUTE_LIFETIME = timedelta(
+    days=int(os.getenv("JWT_SESSION_ABSOLUTE_LIFETIME_DAYS", "7"))
+)
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": JWT_SESSION_ABSOLUTE_LIFETIME,
+    "REFRESH_TOKEN_LIFETIME": JWT_SESSION_ABSOLUTE_LIFETIME,
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }

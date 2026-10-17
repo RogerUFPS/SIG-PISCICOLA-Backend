@@ -8,7 +8,7 @@ ALLOWED_HOSTS = os.getenv(
     "ALLOWED_HOSTS", "localhost,127.0.0.1,backend-pongase-trucha.onrender.com"
 ).split(",")
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "True") == "True"
-HOST_URL = os.getenv("HOST_URL", "http://localhost:3000")
+HOST_URL = os.getenv("HOST_URL") or "https://sig-piscicola-frontend.vercel.app"
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 DEFAULT_FROM_EMAIL = "noreply@correspondencia-ufps.me"

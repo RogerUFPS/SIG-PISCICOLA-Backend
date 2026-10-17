@@ -1,4 +1,6 @@
 # models.py
+import uuid
+
 from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager,
                                         PermissionsMixin)
 from django.db import models
@@ -15,6 +17,50 @@ class Role(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class RoleAppPermission(models.Model):
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="app_permissions",
+    )
+    app = models.CharField(max_length=50)
+    can_view = models.BooleanField(default=False)
+    can_create = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "role_app_permission"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role", "app"],
+                name="unique_role_app_permission",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.role.name}: {self.app}"
+
+
+class UserSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="jwt_sessions",
+    )
+    last_activity = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "user_session"
+        indexes = [
+            models.Index(fields=["user", "revoked_at"]),
+            models.Index(fields=["expires_at"]),
+        ]
 
 
 class UserManager(BaseUserManager):

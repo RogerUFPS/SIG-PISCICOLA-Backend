@@ -64,11 +64,12 @@ def send_invitation_notification(email: str, farm_id: int, invited_by: User) -> 
 
 def send_reset_password_email(email: str, uuidb64: str, token: str) -> None:
 
+    frontend_url = settings.HOST_URL.rstrip("/")
     html = f"""
     <p>Hola,</p>
 
     <p>Se solicitó un restablecimiento de contraseña. Entra en el siguiente enlace para restaurarla:</p>
-    <p>{settings.HOST_URL}/resetPassword/?uid={uuidb64}&token={token}</p>
+    <p>{frontend_url}/resetPassword/?uid={uuidb64}&token={token}</p>
 
     <p>Si no enviaste esta solicitud, puedes ignorar este correa.</p>
     """

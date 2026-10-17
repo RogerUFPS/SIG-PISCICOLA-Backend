@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from apps.accounts.permissions import AdminOr, IsProductor
+from apps.accounts.permissions import AdminOr, AppPermission, IsProductor
 
 from .enums import FarmPermission
 from .models import City, Department, Farm, FarmRole, UserFarm
@@ -22,13 +22,13 @@ from .utils import (
 
 class DepartmentListView(generics.ListAPIView):
     serializer_class = DepartmentSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny, AppPermission]
     queryset = Department.objects.order_by("name")
 
 
 class CityListView(generics.ListAPIView):
     serializer_class = CitySerializer
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny, AppPermission]
 
     def get_queryset(self):
         qs = City.objects.select_related("department").order_by("name")

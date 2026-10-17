@@ -1,19 +1,19 @@
 # urls.py
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-
 from .views import (AcceptInvitationView, AdminListView, ChangePasswordView,
                     CompleteProfileView, ConfirmResetPasswordView,
                     InvitationDetailView, InvitationListView,
                     InviteOperarioView, InviteProductorView, LoginView,
                     LogoutView, ProductorListView, ProductorOperarioListView,
-                    ProfileView, RejectInvitationView, ResetPasswordView)
+                    ProfileView, RejectInvitationView, ResetPasswordView,
+                    RoleAppListView, RoleDetailView, RoleListCreateView,
+                    SessionTokenRefreshView)
 
 urlpatterns = [
     # Auth
     path("auth/login/", LoginView.as_view()),
     path("auth/logout/", LogoutView.as_view()),
-    path("auth/token/refresh/", TokenRefreshView.as_view()),
+    path("auth/token/refresh/", SessionTokenRefreshView.as_view()),
     path("auth/change-password/", ChangePasswordView.as_view()),
     path("auth/reset-password/", ResetPasswordView.as_view()),
     path(
@@ -29,6 +29,9 @@ urlpatterns = [
     ),
     path("users/me/", ProfileView.as_view()),
     path("users/me/complete/", CompleteProfileView.as_view()),
+    path("roles/", RoleListCreateView.as_view()),
+    path("roles/apps/", RoleAppListView.as_view()),
+    path("roles/<int:pk>/", RoleDetailView.as_view()),
     # Invitaciones - envío
     path("invitations/productor/", InviteProductorView.as_view()),
     path("invitations/operario/", InviteOperarioView.as_view()),
