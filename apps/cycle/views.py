@@ -44,6 +44,12 @@ class ProductionPlanViewSet(viewsets.ModelViewSet):
 class CycleViewSet(viewsets.ModelViewSet):
     serializer_class = CycleSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["farm_id"] = self.kwargs.get("farm_pk")
+        context["pond_id"] = self.kwargs.get("pond_pk")
+        return context
+
     def get_permissions(self):
         if self.request.method in ("POST", "PATCH", "DELETE"):
             return [AdminOr(CanManageCycle)()]
