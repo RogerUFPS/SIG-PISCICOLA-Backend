@@ -12,7 +12,7 @@ from .permissions import (CanManageFarm, CanManageFarmUsers, IsFarmMember,
                           IsFarmOwner, user_may_access_farm)
 from .serializers import (CitySerializer, DepartmentSerializer,
                           FarmRoleSerializer, FarmSerializer,
-                          UserFarmSerializer)
+                          UserFarmSerializer, get_role_permission_apps)
 from .utils import (
     assign_operario_permissions,
     assign_role_to_operario,
@@ -138,10 +138,19 @@ class FarmRoleViewSet(viewsets.ModelViewSet):
             farm_id=farm_pk,
             farm__deleted_at__isnull=True,
             deleted_at__isnull=True,
-        )
+        ).prefetch_related("app_permissions")
         if not user_may_access_farm(self.request.user, farm_pk):
             return qs.none()
         return qs.order_by("name")
+
+    @action(detail=False, methods=["get"], url_path="apps")
+    def apps(self, request, farm_pk=None):
+        return Response(
+            [
+                {"app": app, "name": name}
+                for app, name in sorted(get_role_permission_apps().items())
+            ]
+        )
 
     def perform_create(self, serializer):
         serializer.save(farm_id=self.kwargs["farm_pk"])
@@ -185,25 +194,29 @@ class UserFarmViewSet(
         member = self.get_object()
 
         if member.user.role.name == "Operario":
-            farm_role_id = request.data.get("farm_role")
-            if farm_role_id:
-                try:
-                    role = FarmRole.objects.get(
-                        pk=farm_role_id,
-                        farm_id=member.farm_id,
-                        deleted_at__isnull=True,
-                    )
-                except FarmRole.DoesNotExist:
-                    return Response(
-                        {"farm_role": "Rol no encontrado en esta finca."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                try:
-                    assign_role_to_operario(member, role)
-                except ValueError as e:
-                    return Response(
-                        {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
-                    )
+            if "farm_role" in request.data:
+                farm_role_id = request.data.get("farm_role")
+                if not farm_role_id:
+                    member.farm_role = None
+                    member.save(update_fields=["farm_role"])
+                else:
+                    try:
+                        role = FarmRole.objects.get(
+                            pk=farm_role_id,
+                            farm_id=member.farm_id,
+                            deleted_at__isnull=True,
+                        )
+                    except FarmRole.DoesNotExist:
+                        return Response(
+                            {"farm_role": "Rol no encontrado en esta finca."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    try:
+                        assign_role_to_operario(member, role)
+                    except ValueError as e:
+                        return Response(
+                            {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
+                        )
 
             if "permissions" in request.data:
                 try:

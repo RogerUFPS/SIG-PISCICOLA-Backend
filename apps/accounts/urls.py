@@ -6,7 +6,6 @@ from .views import (AcceptInvitationView, AdminListView, ChangePasswordView,
                     InviteOperarioView, InviteProductorView, LoginView,
                     LogoutView, ProductorListView, ProductorOperarioListView,
                     ProfileView, RejectInvitationView, ResetPasswordView,
-                    RoleAppListView, RoleDetailView, RoleListCreateView,
                     SessionTokenRefreshView)
 
 urlpatterns = [
@@ -29,9 +28,6 @@ urlpatterns = [
     ),
     path("users/me/", ProfileView.as_view()),
     path("users/me/complete/", CompleteProfileView.as_view()),
-    path("roles/", RoleListCreateView.as_view()),
-    path("roles/apps/", RoleAppListView.as_view()),
-    path("roles/<int:pk>/", RoleDetailView.as_view()),
     # Invitaciones - envío
     path("invitations/productor/", InviteProductorView.as_view()),
     path("invitations/operario/", InviteOperarioView.as_view()),

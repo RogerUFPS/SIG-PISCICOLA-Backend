@@ -94,28 +94,9 @@ class FishEvaluatedViewSet(viewsets.ModelViewSet):
         obj.deleted_at = deleted_at
         obj.save(update_fields=["deleted_at"])
 
-        remaining_evaluation = (
-            FishEvaluated.objects.filter(
-                cycle=obj.cycle,
-                pond=obj.pond,
-                evaluation_date=obj.evaluation_date,
-                deleted_at__isnull=True,
-            )
-            .exclude(pk=obj.pk)
-            .order_by("-updated_at")
-            .first()
+        serializer._refresh_cycle_control_stats_from(
+            obj.cycle, obj.pond, obj.evaluation_date
         )
-        if remaining_evaluation:
-            serializer._refresh_cycle_control_stat(
-                remaining_evaluation, ignore_same_day=True
-            )
-        else:
-            ControlStat.objects.filter(
-                cycle=obj.cycle,
-                pond=obj.pond,
-                control_date=obj.evaluation_date,
-                deleted_at__isnull=True,
-            ).update(deleted_at=deleted_at)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

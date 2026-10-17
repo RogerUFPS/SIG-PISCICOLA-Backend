@@ -1,145 +1,49 @@
-# Autenticación y permisos por aplicación
+## Roles y permisos de operarios por granja
 
-Base URL de los endpoints: `/api`.
+Los tipos globales de cuenta siguen siendo `Admin`, `Productor` y `Operario`.
+Los roles que se configuran en esta sección son perfiles de trabajo locales a
+una granja; no crean nuevos tipos globales de usuario. El productor propietario
+administra los roles y asigna cada rol a los operarios de esa granja.
 
-## Sesiones y tokens
+### `GET /api/farms/<farm_id>/roles/apps/`
 
-### `POST /api/auth/login/`
+Lista las aplicaciones instaladas bajo `apps.*` en el backend, excepto
+`accounts`. La lista se obtiene del registro de aplicaciones de Django: no se
+mantiene manualmente en el frontend ni en una tabla de configuración.
 
-El formato de credenciales no cambia. La respuesta incluye los tokens JWT y el
-estado del perfil:
+Cada elemento contiene la clave `app` (para enviar en permisos) y un nombre
+visible `name`.
 
-```json
-{
-  "tokens": {
-    "access": "<access-token>",
-    "refresh": "<refresh-token>"
-  },
-  "is_profile_complete": true
-}
-```
+### `GET /api/farms/<farm_id>/roles/`
 
-Los tokens emitidos inician una sesión registrada en el backend. El cliente debe
-enviar el access token en las solicitudes autenticadas:
-
-```http
-Authorization: Bearer <access-token>
-```
-
-Cada solicitud autenticada renueva la marca de actividad. Una sesión se revoca
-si transcurren 15 minutos sin actividad autenticada. El valor se configura con
-`JWT_IDLE_TIMEOUT_MINUTES` (predeterminado: `15`). También existe un vencimiento
-absoluto para la sesión: `JWT_SESSION_ABSOLUTE_LIFETIME_DAYS` (predeterminado:
-`7`), que no se prolonga con la actividad.
-
-### `POST /api/auth/token/refresh/`
-
-Usa el refresh token de una sesión vigente para renovar los tokens. El endpoint
-mantiene la rotación de refresh tokens existente.
-
-Solicitud:
-
-```json
-{
-  "refresh": "<refresh-token>"
-}
-```
-
-Respuesta exitosa (`200 OK`):
-
-```json
-{
-  "access": "<nuevo-access-token>",
-  "refresh": "<nuevo-refresh-token>"
-}
-```
-
-La renovación cuenta como actividad de la sesión. Si la sesión está revocada,
-superó el límite absoluto o lleva 15 minutos inactiva, la solicitud falla con
-`400 Bad Request`; el cliente debe iniciar sesión de nuevo.
-
-### `POST /api/auth/logout/`
-
-El logout ya no requiere un access token vigente. Envía el refresh token para
-revocar la sesión e invalidar el refresh token:
-
-```json
-{
-  "refresh": "<refresh-token>"
-}
-```
-
-Respuesta exitosa: `204 No Content`. Si falta el refresh token o es inválido,
-responde `400 Bad Request` con un campo `detail`.
-
-### Recuperación de contraseña
-
-Los endpoints conservan sus rutas y payloads:
-
-- `POST /api/auth/reset-password/`: solicita el correo de recuperación.
-- `GET /api/auth/reset-password/<uuidb64>/<token>/`: comprueba el token.
-- `POST /api/auth/reset-password/<uuidb64>/<token>/`: confirma la nueva
-  contraseña.
-
-El enlace enviado por correo ahora apunta al frontend
-`https://sig-piscicola-frontend.vercel.app/`. `HOST_URL` permite sobrescribir
-esa URL por entorno.
-
-## Administración de roles
-
-Todos los endpoints de roles requieren autenticación de un usuario con rol
-`Admin`. Para escribir los permisos de una app, incluye `app_permissions` en
-el objeto del rol.
-
-### `GET /api/roles/apps/`
-
-Lista las aplicaciones habilitadas para configurar permisos. El valor `app` de
-cada elemento es la clave que se debe usar en `app_permissions`.
-
-Respuesta (`200 OK`):
-
-```json
-[
-  {
-    "app": "farms",
-    "name": "Farms"
-  },
-  {
-    "app": "ponds",
-    "name": "Ponds"
-  }
-]
-```
-
-### `GET /api/roles/`
-
-Lista roles y sus permisos por aplicación. Cada permiso contiene:
+Lista los roles activos de esa granja. Cada rol incluye su nombre, los permisos
+heredados del sistema anterior y `app_permissions`, con esta forma:
 
 | Campo | Tipo | Significado |
 | --- | --- | --- |
-| `app` | string | Clave de aplicación, obtenida de `/api/roles/apps/`. |
+| `app` | string | Clave de app obtenida de `/roles/apps/`. |
 | `can_view` | boolean | Puede consultar/leer. |
 | `can_create` | boolean | Puede crear. |
 | `can_edit` | boolean | Puede actualizar. |
 | `can_delete` | boolean | Puede eliminar. |
 
-### `POST /api/roles/`
+### `POST /api/farms/<farm_id>/roles/`
 
-Crea un rol y, opcionalmente, sus permisos:
+Crea un rol dentro de la granja indicada:
 
 ```json
 {
-  "name": "Gestor",
+  "name": "Encargado sanitario",
   "app_permissions": [
     {
-      "app": "farms",
+      "app": "health",
       "can_view": true,
       "can_create": true,
       "can_edit": true,
       "can_delete": false
     },
     {
-      "app": "ponds",
+      "app": "monitoring",
       "can_view": true,
       "can_create": false,
       "can_edit": false,
@@ -149,40 +53,57 @@ Crea un rol y, opcionalmente, sus permisos:
 }
 ```
 
-Las claves de aplicación deben existir y no pueden repetirse en el mismo rol.
-`can_view` debe ser `true` cuando se active cualquiera de los otros permisos.
-Si se omite `app_permissions` al crear el rol, empieza sin permisos por app.
+Los permisos quedan asociados al rol y, por tanto, a esa granja solamente. Las
+apps deben pertenecer al listado dinámico, no se pueden repetir y `can_view`
+debe ser `true` si cualquiera de las otras acciones está habilitada. Si no se
+envía `app_permissions`, el rol nuevo queda configurado sin permisos por app.
 
-### `GET /api/roles/<id>/`
+### `GET /api/farms/<farm_id>/roles/<role_id>/`
 
-Obtiene un rol con sus permisos por aplicación.
+Obtiene un rol y sus permisos para una granja.
 
-### `PUT /api/roles/<id>/` y `PATCH /api/roles/<id>/`
+### `PUT /api/farms/<farm_id>/roles/<role_id>/` y
+`PATCH /api/farms/<farm_id>/roles/<role_id>/`
 
-Actualiza los datos del rol. Si se incluye `app_permissions`, la lista enviada
-reemplaza todos los permisos anteriores del rol; si se omite, los permisos no
-cambian. Para retirar permisos de una app, envía la lista sin esa app.
+Actualiza el rol. Si se incluye `app_permissions`, la lista reemplaza los
+permisos previos del rol; si se omite, estos no cambian. Envía una lista vacía
+para revocar todos los permisos por app.
 
-Los cambios se consultan al autorizar cada solicitud: se aplican también a
-usuarios que ya tienen una sesión iniciada, sin esperar a que renueven el JWT.
+Las autorizaciones consultan el rol y sus permisos en cada solicitud. Por
+ello, los cambios afectan también a operarios con una sesión ya iniciada.
 
-### `DELETE /api/roles/<id>/`
+### `DELETE /api/farms/<farm_id>/roles/<role_id>/`
 
-Elimina el rol si no tiene usuarios asignados. Si hay usuarios que lo usan,
-responde `409 Conflict`.
+Desactiva el rol de esa granja. Sus permisos dejan de autorizar operaciones.
 
-## Aplicación de los permisos
+### Asignar un rol a un operario
 
-Los permisos se evalúan para cada aplicación:
+Usa el endpoint de miembros de la granja para asignar `farm_role`:
+
+`PATCH /api/farms/<farm_id>/members/<user_id>/`
+
+```json
+{
+  "farm_role": 12
+}
+```
+
+El rol debe pertenecer a la misma granja. Para retirar la asignación, envía
+`{"farm_role": null}`. Las asignaciones y permisos de otros productores o
+granjas no se modifican.
+
+## Evaluación de permisos por app
+
+En una solicitud dentro de una granja, los permisos del rol asignado al
+operario se aplican así:
 
 - `GET`, `HEAD` y `OPTIONS` requieren `can_view`.
 - `POST` requiere `can_create`.
 - `PUT` y `PATCH` requieren `can_edit`.
 - `DELETE` requiere `can_delete`.
-- Consultar una aplicación requiere `can_view`, incluso cuando también se
-  permita crear, editar o eliminar.
-- El rol `Admin` conserva acceso administrativo y no depende de filas de
-  permisos por app.
+- `can_view` también debe estar activo para crear, editar o eliminar.
+- El administrador conserva sus privilegios globales; el productor propietario
+  conserva la administración de su propia granja.
 
-Los controles propios de cada recurso, como la pertenencia a una granja,
-continúan aplicándose además de los permisos por app.
+Los permisos propios del recurso —por ejemplo, que un operario tenga asignado
+un estanque— se siguen comprobando además del rol de la granja.

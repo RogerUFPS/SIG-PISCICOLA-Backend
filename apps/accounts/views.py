@@ -3,7 +3,6 @@
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.db.models import ProtectedError
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -14,14 +13,13 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .authentication import SessionTokenRefreshSerializer
-from .models import Invitation, Role, User, UserSession
+from .models import Invitation, User, UserSession
 from .permissions import AdminOr, IsAdmin, IsAdminOrValid, IsProductor
 from .serializers import (ChangePasswordSerializer, CompleteProfileSerializer,
                           ConfirmResetPasswordSerializer, InvitationSerializer,
                           InviteOperarioSerializer, InviteProductorSerializer,
-                          LoginSerializer, OperarioSerializer, RoleSerializer,
-                          ResetPasswordSerializer, UserProfileSerializer,
-                          get_role_permission_app_labels)
+                          LoginSerializer, OperarioSerializer,
+                          ResetPasswordSerializer, UserProfileSerializer)
 from .utils import (accept_invitation, change_user_password, invite_operario,
                     invite_productor, send_reset_password_email)
 
@@ -359,46 +357,3 @@ class ProductorOperarioListView(generics.ListAPIView):
             user_farms__farm_id__in=farm_ids,
             role__name="Operario",
         ).distinct()
-
-
-class RoleListCreateView(generics.ListCreateAPIView):
-    serializer_class = RoleSerializer
-    permission_classes = [IsAdmin]
-
-    def get_queryset(self):
-        return Role.objects.prefetch_related("app_permissions").order_by("name")
-
-
-class RoleAppListView(APIView):
-    permission_classes = [IsAdmin]
-
-    def get(self, request):
-        app_labels = get_role_permission_app_labels()
-        return Response(
-            [
-                {"app": label, "name": label.replace("_", " ").title()}
-                for label in sorted(app_labels)
-            ]
-        )
-
-
-class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = RoleSerializer
-    permission_classes = [IsAdmin]
-    queryset = Role.objects.prefetch_related("app_permissions")
-
-    def destroy(self, request, *args, **kwargs):
-        role = self.get_object()
-        if role.users.exists():
-            return Response(
-                {"detail": "No se puede eliminar un rol que tiene usuarios asignados."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        try:
-            role.delete()
-        except ProtectedError:
-            return Response(
-                {"detail": "No se puede eliminar un rol que tiene usuarios asignados."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return Response(status=status.HTTP_204_NO_CONTENT)

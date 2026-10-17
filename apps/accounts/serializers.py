@@ -1,78 +1,15 @@
 # serializers.py
 from django.apps import apps
 from django.contrib.auth import authenticate
-from django.db import transaction
 from rest_framework import serializers
 
-from .models import Invitation, Role, RoleAppPermission, User
-
-
-def get_role_permission_app_labels():
-    return {
-        app_config.label
-        for app_config in apps.get_app_configs()
-        if app_config.name.startswith("apps.") and app_config.label != "accounts"
-    }
-
-
-class RoleAppPermissionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = RoleAppPermission
-        fields = ["app", "can_view", "can_create", "can_edit", "can_delete"]
-
-    def validate_app(self, value):
-        if value not in get_role_permission_app_labels():
-            raise serializers.ValidationError("La aplicación no es válida.")
-        return value
-
-    def validate(self, attrs):
-        if any(
-            attrs.get(field, getattr(self.instance, field, False))
-            for field in ("can_create", "can_edit", "can_delete")
-        ) and not attrs.get("can_view", getattr(self.instance, "can_view", False)):
-            raise serializers.ValidationError(
-                {"can_view": "El permiso de ver es obligatorio para los demás permisos."}
-            )
-        return attrs
+from .models import Invitation, Role, User
 
 
 class RoleSerializer(serializers.ModelSerializer):
-    app_permissions = RoleAppPermissionSerializer(many=True, required=False)
-
     class Meta:
         model = Role
-        fields = ["id", "name", "app_permissions"]
-
-    def validate_app_permissions(self, permissions):
-        app_labels = [permission["app"] for permission in permissions]
-        if len(app_labels) != len(set(app_labels)):
-            raise serializers.ValidationError(
-                "No se puede repetir una aplicación en los permisos del rol."
-            )
-        return permissions
-
-    @transaction.atomic
-    def create(self, validated_data):
-        permissions = validated_data.pop("app_permissions", [])
-        role = Role.objects.create(**validated_data)
-        RoleAppPermission.objects.bulk_create(
-            [RoleAppPermission(role=role, **permission) for permission in permissions]
-        )
-        return role
-
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        permissions = validated_data.pop("app_permissions", None)
-        instance = super().update(instance, validated_data)
-        if permissions is not None:
-            instance.app_permissions.all().delete()
-            RoleAppPermission.objects.bulk_create(
-                [
-                    RoleAppPermission(role=instance, **permission)
-                    for permission in permissions
-                ]
-            )
-        return instance
+        fields = ["id", "name"]
 
 
 class CompleteProfileSerializer(serializers.ModelSerializer):

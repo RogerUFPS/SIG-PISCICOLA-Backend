@@ -1,8 +1,9 @@
 from django.apps import apps
+from django.db import transaction
 from rest_framework import serializers
 
 from .enums import FarmPermission
-from .models import City, Department, Farm, FarmRole, UserFarm
+from .models import City, Department, Farm, FarmRole, FarmRoleAppPermission, UserFarm
 
 
 class UserSummarySerializer(serializers.ModelSerializer):
@@ -112,18 +113,59 @@ class FarmSerializer(serializers.ModelSerializer):
         return value
 
 
+def get_role_permission_apps():
+    return {
+        config.label: config.verbose_name
+        for config in apps.get_app_configs()
+        if config.name.startswith("apps.") and config.label != "accounts"
+    }
+
+
+class FarmRoleAppPermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FarmRoleAppPermission
+        fields = ["app", "can_view", "can_create", "can_edit", "can_delete"]
+
+    def validate_app(self, value):
+        if value not in get_role_permission_apps():
+            raise serializers.ValidationError("La aplicación no está implementada.")
+        return value
+
+    def validate(self, attrs):
+        if any(
+            attrs.get(field, getattr(self.instance, field, False))
+            for field in ("can_create", "can_edit", "can_delete")
+        ) and not attrs.get("can_view", getattr(self.instance, "can_view", False)):
+            raise serializers.ValidationError(
+                {"can_view": "El permiso de ver es obligatorio para los demás permisos."}
+            )
+        return attrs
+
+
 class FarmRoleSerializer(serializers.ModelSerializer):
     permissions = PermissionsField(required=False, default=0)
+    app_permissions = FarmRoleAppPermissionSerializer(many=True, required=False)
 
     class Meta:
         model = FarmRole
-        fields = ["id", "farm", "name", "permissions"]
+        fields = ["id", "farm", "name", "permissions", "app_permissions"]
         read_only_fields = ["farm"]
 
+    def validate_app_permissions(self, permissions):
+        app_names = [permission["app"] for permission in permissions]
+        if len(app_names) != len(set(app_names)):
+            raise serializers.ValidationError(
+                "No se puede repetir una aplicación en los permisos del rol."
+            )
+        return permissions
+
     def validate(self, attrs):
-        farm = getattr(self.instance, "farm", None) or attrs.get("farm")
+        view = self.context.get("view")
+        farm_id = getattr(self.instance, "farm_id", None)
+        if farm_id is None and view is not None:
+            farm_id = view.kwargs.get("farm_pk")
         qs = FarmRole.objects.filter(
-            farm=farm,
+            farm_id=farm_id,
             name__iexact=attrs.get("name", getattr(self.instance, "name", "")),
             deleted_at__isnull=True,
         )
@@ -134,6 +176,37 @@ class FarmRoleSerializer(serializers.ModelSerializer):
                 {"name": "Ya existe un rol con este nombre en la finca."}
             )
         return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        app_permissions = validated_data.pop("app_permissions", [])
+        role = FarmRole.objects.create(
+            permissions_configured=True,
+            **validated_data,
+        )
+        FarmRoleAppPermission.objects.bulk_create(
+            [
+                FarmRoleAppPermission(role=role, **permission)
+                for permission in app_permissions
+            ]
+        )
+        return role
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        app_permissions = validated_data.pop("app_permissions", None)
+        instance = super().update(instance, validated_data)
+        if app_permissions is not None:
+            instance.permissions_configured = True
+            instance.save(update_fields=["permissions_configured"])
+            instance.app_permissions.all().delete()
+            FarmRoleAppPermission.objects.bulk_create(
+                [
+                    FarmRoleAppPermission(role=instance, **permission)
+                    for permission in app_permissions
+                ]
+            )
+        return instance
 
 
 class UserFarmSerializer(serializers.ModelSerializer):

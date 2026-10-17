@@ -8,14 +8,26 @@ from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.farms.models import (
+    City,
+    Department,
+    Farm,
+    FarmRole,
+    FarmRoleAppPermission,
+    UserFarm,
+)
+
 from .authentication import SessionJWTAuthentication
-from .models import Role, RoleAppPermission, User, UserSession
+from .models import Role, User, UserSession
 from .permissions import AppPermission
 from .views import get_tokens_for_user
 
 
 class SpeciesView:
     __module__ = "apps.species.views"
+
+    def __init__(self, farm_id):
+        self.kwargs = {"farm_pk": farm_id}
 
 
 class AccountAuthenticationTests(TestCase):
@@ -27,6 +39,28 @@ class AccountAuthenticationTests(TestCase):
             role=self.role,
             is_profile_complete=True,
         )
+        department = Department.objects.create(name="Test Department")
+        city = City.objects.create(name="Test City", department=department)
+        farm = Farm.objects.create(
+            name="Test Farm",
+            department=department,
+            city=city,
+            address="Test",
+            total_area_ha=1,
+        )
+        farm_role = FarmRole.objects.create(
+            farm=farm,
+            name="Consulta",
+            permissions_configured=True,
+        )
+        UserFarm.objects.create(
+            user=self.user,
+            farm=farm,
+            farm_role=farm_role,
+            is_owner=False,
+        )
+        self.farm = farm
+        self.farm_role = farm_role
         self.tokens = get_tokens_for_user(self.user)
 
     def test_authenticated_activity_extends_idle_timeout(self):
@@ -87,8 +121,8 @@ class AccountAuthenticationTests(TestCase):
         self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
 
     def test_role_app_permissions_apply_to_each_request(self):
-        RoleAppPermission.objects.create(
-            role=self.role,
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
             app="species",
             can_view=True,
             can_create=False,
@@ -98,56 +132,50 @@ class AccountAuthenticationTests(TestCase):
         request = APIRequestFactory().get("/api/species/")
         request.user = self.user
 
-        self.assertTrue(AppPermission().has_permission(request, SpeciesView()))
+        view = SpeciesView(self.farm.pk)
+        self.assertTrue(AppPermission().has_permission(request, view))
 
         request.method = "POST"
-        self.assertFalse(AppPermission().has_permission(request, SpeciesView()))
+        self.assertFalse(AppPermission().has_permission(request, view))
 
-        RoleAppPermission.objects.filter(role=self.role, app="species").update(
+        FarmRoleAppPermission.objects.filter(
+            role=self.farm_role, app="species"
+        ).update(
             can_create=True
         )
-        self.assertTrue(AppPermission().has_permission(request, SpeciesView()))
+        self.assertTrue(AppPermission().has_permission(request, view))
 
-    def test_admin_can_create_roles_with_app_permissions(self):
-        admin_role = Role.objects.create(name="Admin")
-        admin = User.objects.create_user(
-            email="admin@example.com",
-            password="secure-password",
-            role=admin_role,
-            is_profile_complete=True,
+    def test_permissions_from_one_farm_do_not_apply_to_another(self):
+        department = self.farm.department
+        city = self.farm.city
+        other_farm = Farm.objects.create(
+            name="Other Farm",
+            department=department,
+            city=city,
+            address="Other",
+            total_area_ha=1,
         )
-        tokens = get_tokens_for_user(admin)
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
-
-        apps_response = client.get("/api/roles/apps/")
-        self.assertEqual(apps_response.status_code, 200)
-        self.assertIn("species", {item["app"] for item in apps_response.data})
-
-        response = client.post(
-            "/api/roles/",
-            {
-                "name": "Gestor",
-                "app_permissions": [
-                    {
-                        "app": "species",
-                        "can_view": True,
-                        "can_create": False,
-                        "can_edit": True,
-                        "can_delete": False,
-                    }
-                ],
-            },
-            format="json",
+        other_role = FarmRole.objects.create(
+            farm=other_farm,
+            name="Sin permisos de especies",
+            permissions_configured=True,
         )
-
-        self.assertEqual(response.status_code, 201)
-        permission = RoleAppPermission.objects.get(
-            role__name="Gestor",
+        UserFarm.objects.create(
+            user=self.user,
+            farm=other_farm,
+            farm_role=other_role,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
             app="species",
+            can_view=True,
         )
-        self.assertTrue(permission.can_view)
-        self.assertTrue(permission.can_edit)
+        request = APIRequestFactory().get("/api/species/")
+        request.user = self.user
+
+        self.assertFalse(
+            AppPermission().has_permission(request, SpeciesView(other_farm.pk))
+        )
 
     @override_settings(HOST_URL="https://sig-piscicola-frontend.vercel.app/")
     @patch("apps.accounts.utils.send_email")

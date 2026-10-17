@@ -19,31 +19,6 @@ class Role(models.Model):
         return self.name
 
 
-class RoleAppPermission(models.Model):
-    role = models.ForeignKey(
-        Role,
-        on_delete=models.CASCADE,
-        related_name="app_permissions",
-    )
-    app = models.CharField(max_length=50)
-    can_view = models.BooleanField(default=False)
-    can_create = models.BooleanField(default=False)
-    can_edit = models.BooleanField(default=False)
-    can_delete = models.BooleanField(default=False)
-
-    class Meta:
-        db_table = "role_app_permission"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["role", "app"],
-                name="unique_role_app_permission",
-            ),
-        ]
-
-    def __str__(self):
-        return f"{self.role.name}: {self.app}"
-
-
 class UserSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(

@@ -1,8 +1,6 @@
 # permissions.py
 from rest_framework.permissions import BasePermission
 
-from .models import RoleAppPermission
-
 ROLE_ADMIN = "Admin"
 ROLE_PRODUCTOR = "Productor"
 ROLE_OPERARIO = "Operario"
@@ -55,12 +53,37 @@ class AppPermission(BasePermission):
         if getattr(getattr(user, "role", None), "name", None) == ROLE_ADMIN:
             return True
 
+        farm_id = (
+            view.kwargs.get("farm_pk")
+            or view.kwargs.get("farm_id")
+        )
+        if farm_id is None:
+            return True
+
+        from apps.farms.models import FarmRoleAppPermission, UserFarm
+
+        membership = UserFarm.objects.select_related("farm_role").filter(
+            user=user,
+            farm_id=farm_id,
+            status=UserFarm.Status.ACTIVE,
+            farm__deleted_at__isnull=True,
+        ).first()
+        if membership is None:
+            return False
+        if membership.is_owner:
+            return True
+        if (
+            membership.farm_role_id is None
+            or not membership.farm_role.permissions_configured
+        ):
+            return True
+        if membership.farm_role.deleted_at is not None:
+            return False
+
         app_parts = view.__class__.__module__.split(".")
         if len(app_parts) < 3 or app_parts[0] != "apps":
             return True
         app = app_parts[1]
-        if app == "accounts":
-            return True
 
         action_by_method = {
             "GET": "can_view",
@@ -81,19 +104,14 @@ class AppPermission(BasePermission):
             "destroy": "can_delete",
         }.get(view_action)
         if action is None and view_action:
-            action = {
-                "GET": "can_view",
-                "HEAD": "can_view",
-                "OPTIONS": "can_view",
-                "DELETE": "can_delete",
-            }.get(request.method, "can_edit")
+            action = action_by_method.get(request.method)
         if action is None:
             action = action_by_method.get(request.method)
         if action is None:
             return False
 
-        grant = RoleAppPermission.objects.filter(
-            role_id=user.role_id,
+        grant = FarmRoleAppPermission.objects.filter(
+            role_id=membership.farm_role_id,
             app=app,
         ).first()
         return bool(grant and grant.can_view and getattr(grant, action))

@@ -88,6 +88,8 @@ class HasFarmPermission(BasePermission):
             return True
         if role.name == ROLE_PRODUCTOR:
             return True
+        if uf.farm_role and uf.farm_role.permissions_configured:
+            return True
 
         effective = expand_permissions(uf.permissions)
         return bool(effective & self.required_permission)
@@ -112,6 +114,8 @@ class CanManageFarmUsers(BasePermission):
         if uf.is_owner:
             return True
         if role.name == ROLE_PRODUCTOR:
+            return True
+        if uf.farm_role and uf.farm_role.permissions_configured:
             return True
 
         effective = expand_permissions(uf.permissions)
