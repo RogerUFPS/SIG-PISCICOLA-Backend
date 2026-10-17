@@ -12,11 +12,7 @@ from .permissions import (CanManageFarm, CanManageFarmUsers, IsFarmMember,
                           IsFarmOwner, user_may_access_farm)
 from .serializers import (CitySerializer, DepartmentSerializer,
                           FarmRoleSerializer, FarmSerializer,
-<<<<<<< HEAD
                           UserFarmSerializer, get_role_permission_apps)
-=======
-                          UserFarmSerializer)
->>>>>>> backend
 from .utils import (
     assign_operario_permissions,
     assign_role_to_operario,

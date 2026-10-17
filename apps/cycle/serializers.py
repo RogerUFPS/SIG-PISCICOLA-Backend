@@ -242,11 +242,7 @@ class CycleSerializer(serializers.ModelSerializer):
         if state in [Cycle.State.IN_PROGRESS, Cycle.State.PAUSED]:
             ciclo_activo = (
                 Cycle.objects.filter(
-<<<<<<< HEAD
-                    farm=farm,
-=======
                     pond_id=pond_id,
->>>>>>> backend
                     state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
                     deleted_at__isnull=True,
                 )
