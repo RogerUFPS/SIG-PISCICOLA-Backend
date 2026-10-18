@@ -127,3 +127,7 @@ class PondAreaValidationTests(SimpleTestCase):
                 serializer.errors["area"][0],
                 "El área total de los estanques supera el área total disponible de la granja.",
             )
+            self.assertEqual(
+                serializer.errors["detail"][0],
+                "El área total de los estanques supera el área total disponible de la granja.",
+            )
