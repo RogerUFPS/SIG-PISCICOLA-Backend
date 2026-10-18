@@ -84,12 +84,14 @@ class PondSerializer(serializers.ModelSerializer):
             total_area = current_total + area_to_hectares(area)
 
             if total_area > farm_total_area_ha:
+                area_error = (
+                    "El área total de los estanques supera el área total "
+                    "disponible de la granja."
+                )
                 raise serializers.ValidationError(
                     {
-                        "area": (
-                            "El área total de los estanques supera el área total "
-                            "disponible de la granja."
-                        )
+                        "detail": area_error,
+                        "area": area_error,
                     }
                 )
 
