@@ -101,15 +101,24 @@ class PondAreaValidationTests(SimpleTestCase):
 
     def test_reports_area_error_when_total_exceeds_farm_capacity(self):
         farm = MagicMock(total_area_ha=Decimal("13.75"))
+        unique_query = MagicMock()
+        unique_query.exists.return_value = False
         ponds = MagicMock()
-        ponds.exclude.return_value.values_list.return_value = [Decimal("137000")]
+        ponds.exclude.return_value.values_list.return_value = [Decimal("137500")]
 
         with patch(
             "apps.ponds.serializers.Pond.objects.filter",
-            return_value=ponds,
+            side_effect=[unique_query, unique_query, ponds],
         ):
             serializer = PondSerializer(
-                data={"area": Decimal("100")},
+                data={
+                    "name": "Pond excedido",
+                    "type": Pond.Type.DIRT,
+                    "capacity": Decimal("100"),
+                    "area": Decimal("100"),
+                    "volume": Decimal("100"),
+                    "depth": Decimal("1"),
+                },
                 context={"farm": farm},
             )
 
