@@ -9,6 +9,10 @@ from rest_framework import serializers
 from .models import Pond, UserFarmPond
 
 
+def area_to_hectares(value):
+    return Decimal(str(value)) / Decimal("10000")
+
+
 class PondSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pond
@@ -66,15 +70,9 @@ class PondSerializer(serializers.ModelSerializer):
         if area is not None:
             farm_total_area_ha = Decimal(str(farm.total_area_ha))
 
-            def to_hectares(value):
-                value_decimal = Decimal(str(value))
-                if value_decimal > farm_total_area_ha * Decimal("10000"):
-                    return value_decimal / Decimal("10000")
-                return value_decimal
-
             current_total = sum(
                 (
-                    to_hectares(value)
+                    area_to_hectares(value)
                     for value in Pond.objects.filter(
                         farm=farm, deleted_at__isnull=True
                     )
@@ -83,7 +81,7 @@ class PondSerializer(serializers.ModelSerializer):
                 ),
                 Decimal("0"),
             )
-            total_area = current_total + to_hectares(area)
+            total_area = current_total + area_to_hectares(area)
 
             if total_area > farm_total_area_ha:
                 raise serializers.ValidationError(

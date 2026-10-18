@@ -1,9 +1,11 @@
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
 from apps.farms.utils import farm_has_active_resources
 from apps.ponds.models import Pond
+from apps.ponds.serializers import area_to_hectares
 from apps.ponds.utils import pond_has_cycles, soft_delete_pond
 from apps.ponds.views import PondInactivateView
 
@@ -82,3 +84,17 @@ class PondLifecycleProtectionTests(SimpleTestCase):
             return_value=pond_query,
         ):
             self.assertTrue(farm_has_active_resources(object()))
+
+
+class PondAreaValidationTests(SimpleTestCase):
+    def test_converts_square_meters_to_hectares_before_comparing(self):
+        farm_area_ha = 13.75
+        pond_areas_m2 = [100, 20]
+
+        total_pond_area_ha = sum(
+            (area_to_hectares(area) for area in pond_areas_m2),
+            Decimal("0"),
+        )
+
+        self.assertEqual(total_pond_area_ha, Decimal("0.012"))
+        self.assertLess(total_pond_area_ha, Decimal(str(farm_area_ha)))
