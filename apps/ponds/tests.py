@@ -5,7 +5,7 @@ from django.test import SimpleTestCase
 
 from apps.farms.utils import farm_has_active_resources
 from apps.ponds.models import Pond
-from apps.ponds.serializers import area_to_hectares
+from apps.ponds.serializers import PondSerializer, area_to_hectares
 from apps.ponds.utils import pond_has_cycles, soft_delete_pond
 from apps.ponds.views import PondInactivateView
 
@@ -98,3 +98,32 @@ class PondAreaValidationTests(SimpleTestCase):
 
         self.assertEqual(total_pond_area_ha, Decimal("0.012"))
         self.assertLess(total_pond_area_ha, Decimal(str(farm_area_ha)))
+
+    def test_reports_area_error_when_total_exceeds_farm_capacity(self):
+        farm = MagicMock(total_area_ha=Decimal("13.75"))
+        unique_query = MagicMock()
+        unique_query.exists.return_value = False
+        ponds = MagicMock()
+        ponds.exclude.return_value.values_list.return_value = [Decimal("137500")]
+
+        with patch(
+            "apps.ponds.serializers.Pond.objects.filter",
+            side_effect=[unique_query, unique_query, ponds],
+        ):
+            serializer = PondSerializer(
+                data={
+                    "name": "Pond excedido",
+                    "type": Pond.Type.DIRT,
+                    "capacity": Decimal("100"),
+                    "area": Decimal("100"),
+                    "volume": Decimal("100"),
+                    "depth": Decimal("1"),
+                },
+                context={"farm": farm},
+            )
+
+            self.assertFalse(serializer.is_valid())
+            self.assertEqual(
+                serializer.errors["area"][0],
+                "El área total de los estanques supera el área total disponible de la granja.",
+            )
