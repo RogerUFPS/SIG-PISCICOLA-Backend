@@ -972,6 +972,16 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
 
         return data
 
+    @staticmethod
+    def _refresh_monitoring_controls(instance):
+        from apps.monitoring.serializers import FishEvaluatedSerializer
+
+        FishEvaluatedSerializer()._refresh_cycle_control_stats_from(
+            instance.cycle,
+            instance.cycle.pond,
+            instance.date,
+        )
+
     def update(self, instance, validated_data):
         request = self.context.get("request")
         user = (
@@ -991,6 +1001,7 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
                     if user is not None:
                         instance.completed_by = user
                     instance.save()
+                self._refresh_monitoring_controls(instance)
                 return instance
 
             with transaction.atomic():
@@ -1007,6 +1018,7 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
                     except ValueError as exc:
                         raise serializers.ValidationError({"detail": str(exc)}) from exc
                 instance.save()
+            self._refresh_monitoring_controls(instance)
             return instance
 
         new_status = validated_data["status"]
@@ -1025,6 +1037,7 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
                 if user is not None:
                     instance.completed_by = user
                 instance.save()
+            self._refresh_monitoring_controls(instance)
             return instance
 
         with transaction.atomic():
@@ -1034,4 +1047,5 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
             if user is not None:
                 instance.completed_by = user
             instance.save()
+        self._refresh_monitoring_controls(instance)
         return instance
