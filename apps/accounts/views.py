@@ -1,15 +1,19 @@
 # views.py
 
 from django.apps import apps
+from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Invitation, User
+from .authentication import SessionTokenRefreshSerializer
+from .models import Invitation, User, UserSession
 from .permissions import AdminOr, IsAdmin, IsAdminOrValid, IsProductor
 from .serializers import (ChangePasswordSerializer, CompleteProfileSerializer,
                           ConfirmResetPasswordSerializer, InvitationSerializer,
@@ -22,6 +26,11 @@ from .utils import (accept_invitation, change_user_password, invite_operario,
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
+    session = UserSession.objects.create(
+        user=user,
+        expires_at=timezone.now() + settings.JWT_SESSION_ABSOLUTE_LIFETIME,
+    )
+    refresh["sid"] = str(session.pk)
     return {
         "refresh": str(refresh),
         "access": str(refresh.access_token),
@@ -54,6 +63,7 @@ class ChangePasswordView(APIView):
 
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data, context={"request": request})
@@ -68,17 +78,50 @@ class LoginView(APIView):
         )
 
 
-class LogoutView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+class SessionTokenRefreshView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    serializer_class = SessionTokenRefreshSerializer
 
     def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        refresh_value = (
+            request.data.get("refresh") if isinstance(request.data, dict) else None
+        )
+        if not isinstance(refresh_value, str) or not refresh_value:
+            return Response(
+                {"detail": "Debes enviar el token de renovación."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
-            refresh_token = request.data["refresh"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Exception:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+            token = RefreshToken(refresh_value)
+        except TokenError:
+            return Response(
+                {"detail": "El token de renovación es inválido o ya venció."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session_id = token.get("sid")
+        if session_id:
+            session = UserSession.objects.filter(
+                pk=session_id,
+                user_id=token.get("user_id"),
+                revoked_at__isnull=True,
+            ).first()
+            if session:
+                session.revoked_at = timezone.now()
+                session.save(update_fields=["revoked_at"])
+        token.blacklist()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CompleteProfileView(APIView):
@@ -213,6 +256,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
 class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
@@ -235,6 +279,7 @@ class ResetPasswordView(APIView):
 
 class ConfirmResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def get(self, request, uuidb64, token):
         user = self._get_valid_user_from_token(uuidb64, token)

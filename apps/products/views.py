@@ -3,8 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from apps.accounts.permissions import AdminOr, IsAdmin
+from apps.accounts.permissions import AdminOr, AppPermission
 from apps.farms.permissions import CanManageInventory, IsFarmMember
+from apps.purchases.models import InventoryMovement
 from apps.purchases.utils import get_product_stock
 
 from .models import Product, Supplier, TypeProduct
@@ -20,8 +21,8 @@ class TypeProductViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
-            return [AllowAny()]
-        return [IsAdmin()]
+            return [AllowAny(), AppPermission()]
+        return [AppPermission()]
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -51,7 +52,18 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer.save(farm_id=self.kwargs["farm_pk"])
 
     def destroy(self, request, *args, **kwargs):
-        soft_delete(self.get_object())
+        product = self.get_object()
+        has_been_used = InventoryMovement.objects.filter(
+            product=product,
+            movement_type=InventoryMovement.MovementType.OUT,
+        ).exists()
+        if has_been_used:
+            return Response(
+                {"detail": "No se puede eliminar un producto que ya fue utilizado."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        soft_delete(product)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"], url_path="stock")

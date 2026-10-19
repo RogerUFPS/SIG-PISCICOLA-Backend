@@ -3,9 +3,12 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 
 from apps.accounts.permissions import AdminOr
 from apps.farms.permissions import IsFarmMember
+from apps.cycle.models import Cycle
+from apps.ponds.models import Pond
 from .models import FishEvaluated, DailyStat, ControlStat
 from .permissions import CanManageMonitoring
 from .serializers import (
@@ -24,6 +27,25 @@ class FishEvaluatedViewSet(viewsets.ModelViewSet):
     - POST/PATCH/DELETE: AdminOr(CanManageMonitoring)
     """
     serializer_class = FishEvaluatedSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+
+        farm_pk = self.kwargs.get("farm_pk")
+        pond_pk = self.kwargs.get("pond_pk")
+        cycle_pk = self.kwargs.get("cycle_pk")
+
+        # Evita errores en la generación de esquema (swagger) sin kwargs
+        if farm_pk and pond_pk and cycle_pk:
+            ctx["pond"] = get_object_or_404(Pond, id=pond_pk, farm_id=farm_pk)
+            ctx["cycle"] = get_object_or_404(
+                Cycle,
+                id=cycle_pk,
+                farm_id=farm_pk,
+                pond_id=pond_pk,
+                deleted_at__isnull=True,
+            )
+        return ctx
 
     def get_permissions(self):
         if self.request.method in ("POST", "PATCH", "DELETE"):
@@ -72,28 +94,9 @@ class FishEvaluatedViewSet(viewsets.ModelViewSet):
         obj.deleted_at = deleted_at
         obj.save(update_fields=["deleted_at"])
 
-        remaining_evaluation = (
-            FishEvaluated.objects.filter(
-                cycle=obj.cycle,
-                pond=obj.pond,
-                evaluation_date=obj.evaluation_date,
-                deleted_at__isnull=True,
-            )
-            .exclude(pk=obj.pk)
-            .order_by("-updated_at")
-            .first()
+        serializer._refresh_cycle_control_stats_from(
+            obj.cycle, obj.pond, obj.evaluation_date
         )
-        if remaining_evaluation:
-            serializer._refresh_cycle_control_stat(
-                remaining_evaluation, ignore_same_day=True
-            )
-        else:
-            ControlStat.objects.filter(
-                cycle=obj.cycle,
-                pond=obj.pond,
-                control_date=obj.evaluation_date,
-                deleted_at__isnull=True,
-            ).update(deleted_at=deleted_at)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

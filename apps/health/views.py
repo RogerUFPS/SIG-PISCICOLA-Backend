@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import AdminOr
+from apps.accounts.permissions import AdminOr, AppPermission
 from apps.farms.permissions import IsFarmMember
 
 from .models import HealthStat, TreatmentEvent, TreatmentPlan
@@ -268,7 +268,7 @@ class HealthOptionsView(APIView):
     GET sin farm_id: enums de HealthStat, TreatmentPlan y TreatmentEvent.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, AppPermission]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):

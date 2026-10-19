@@ -8,6 +8,7 @@ psycopg2-binary>=2.9
 django-cors-headers>=4.3
 python-dotenv
 gunicorn
+uvicorn
 drf-spectacular
 resend
 reportlab>=4.0
