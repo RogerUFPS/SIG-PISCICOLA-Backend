@@ -368,16 +368,28 @@ class CycleStateCalculator:
             (total_mortality / total_fish_seen * 100) if total_fish_seen > 0 else 0.0
         )
 
-        # Calcular FCA si hay datos suficientes (2+ ControlStats)
+        # Calcular FCA usando el último control y el alimento efectivo acumulado.
         fca = None
+        biomass_gain_kg = None
         control_stats = ControlStat.objects.filter(
             cycle_id=cycle_id, deleted_at__isnull=True
         ).order_by("-control_date")
 
-        if control_stats.count() >= 2:
-            latest_control = control_stats.first()
-            if latest_control and latest_control.fca:
-                fca = latest_control.fca
+        latest_control = control_stats.first()
+        if latest_control:
+            biomass_gain_kg = latest_control.biomass_gain_kg
+            fca = latest_control.fca
+
+            if fca is None and biomass_gain_kg is not None:
+                from apps.feeding.utils import cycle_feed_consumed_kg
+
+                feed_kg = cycle_feed_consumed_kg(
+                    cycle_id=cycle_id,
+                    end_date=latest_control.control_date,
+                )
+                fca = BiomassCalculator.calculate_fca(
+                    float(feed_kg), biomass_gain_kg
+                )
 
         # Calcular días desde el inicio del ciclo
         from apps.cycle.models import Cycle
@@ -393,6 +405,7 @@ class CycleStateCalculator:
             "max_weight_g": latest_evaluation.max_weight_g,
             "mortality_percentage": mortality_percentage,
             "biomass_kg": biomass_kg,
+            "biomass_gain_kg": biomass_gain_kg,
             "fca": fca,
             "has_monitoring_data": True,
             "days_elapsed": days_elapsed,
