@@ -69,6 +69,19 @@ class BiomassCalculator:
         return current_biomass_kg - previous_biomass_kg
 
     @staticmethod
+    def get_cycle_initial_biomass(cycle_id: int) -> float:
+        """Biomasa de la siembra inicial vinculada al ciclo, en kg."""
+        from apps.cycle.models import CyclePondBatch
+
+        rows = CyclePondBatch.objects.filter(cycle_id=cycle_id).values_list(
+            "quantity", "pond_batch__batch__avg_weight_g"
+        )
+        return sum(
+            (quantity * (avg_weight_g or 0) / 1000 for quantity, avg_weight_g in rows),
+            0.0,
+        )
+
+    @staticmethod
     def get_sample_live_quantity(
         sampled_quantity: int, mortality_quantity: int = 0
     ) -> int:
