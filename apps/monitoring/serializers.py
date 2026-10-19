@@ -265,15 +265,15 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
         biomass_gain_kg = None
         fca = None
 
-        if previous_control is not None:
+        initial_biomass = BiomassCalculator.get_cycle_initial_biomass(cycle.id)
+        if initial_biomass > 0:
             biomass_gain_kg = BiomassCalculator.calculate_biomass_gain(
-                biomass_kg, previous_control.biomass_kg
+                biomass_kg, initial_biomass
             )
             from apps.feeding.utils import cycle_feed_consumed_kg
 
             alimento_kg = cycle_feed_consumed_kg(
                 cycle_id=cycle.id,
-                start_date=previous_control.control_date,
                 end_date=evaluation_date,
             )
             fca = BiomassCalculator.calculate_fca(float(alimento_kg), biomass_gain_kg)
@@ -790,15 +790,15 @@ class ControlStatSerializer(serializers.ModelSerializer):
         biomass_gain = None
         fca = None
 
-        if previous_control is not None:
+        initial_biomass = BiomassCalculator.get_cycle_initial_biomass(cycle.id)
+        if initial_biomass > 0:
             biomass_gain = BiomassCalculator.calculate_biomass_gain(
-                current_biomass, previous_control.biomass_kg
+                current_biomass, initial_biomass
             )
             from apps.feeding.utils import cycle_feed_consumed_kg
 
             alimento_kg = cycle_feed_consumed_kg(
                 cycle_id=cycle.id,
-                start_date=previous_control.control_date,
                 end_date=control_date,
             )
             fca = BiomassCalculator.calculate_fca(float(alimento_kg), biomass_gain)

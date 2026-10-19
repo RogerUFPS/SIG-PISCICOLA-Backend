@@ -3,6 +3,7 @@ from django.db.models import Sum
 from apps.batch.models import Batch
 from apps.cycle.models import Cycle, CyclePondBatch
 from apps.monitoring.models import ControlStat, FishEvaluated
+from apps.monitoring.services import BiomassCalculator
 from apps.species.models import SpecieFeedingReference, SpecieProductionReference
 
 
@@ -85,7 +86,7 @@ def calculate_fca(batch: Batch, cycle_ids: list[int]) -> dict:
         )
 
     latest_control = control_stats.last()
-    if latest_control is None or latest_control.fca is None:
+    if latest_control is None:
         return _build_indicator(
             name="FCA",
             value="N/A",
@@ -99,6 +100,32 @@ def calculate_fca(batch: Batch, cycle_ids: list[int]) -> dict:
         )
 
     fca = latest_control.fca
+    if fca is None and latest_control.biomass_gain_kg:
+        from apps.feeding.utils import cycle_feed_consumed_kg
+
+        feed_kg = sum(
+            (
+                cycle_feed_consumed_kg(cycle_id=cycle_id)
+                for cycle_id in cycle_ids
+            ),
+            0,
+        )
+        fca = BiomassCalculator.calculate_fca(
+            float(feed_kg), latest_control.biomass_gain_kg
+        )
+
+    if fca is None:
+        return _build_indicator(
+            name="FCA",
+            value="N/A",
+            status="No calculable",
+            classification="Cálculo de FCA no disponible",
+            recommendation=(
+                "Registre suministros efectivos y controles biométricos con ganancia "
+                "de biomasa para calcular el FCA."
+            ),
+            notes="Sin datos suficientes para este indicador.",
+        )
     classification = "Sin referencia técnica disponible"
     recommendation = "Revise las referencias de alimentación para esta especie y etapa."
     ref = _get_feeding_reference(batch)
