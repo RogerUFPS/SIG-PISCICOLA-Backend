@@ -53,37 +53,54 @@ class AppPermission(BasePermission):
         if getattr(getattr(user, "role", None), "name", None) == ROLE_ADMIN:
             return True
 
+        request_data = getattr(request, "data", {})
+        query_params = getattr(request, "query_params", getattr(request, "GET", {}))
         farm_id = (
             view.kwargs.get("farm_pk")
             or view.kwargs.get("farm_id")
+            or request_data.get("farm_id")
+            or query_params.get("farm_id")
         )
         if farm_id is None:
-            return True
+            if request.method in ("GET", "HEAD", "OPTIONS"):
+                return True
+            return view.__class__.__module__.startswith("apps.accounts.")
 
         from apps.farms.models import FarmRoleAppPermission, UserFarm
 
         membership = UserFarm.objects.select_related("farm_role").filter(
             user=user,
             farm_id=farm_id,
-            status=UserFarm.Status.ACTIVE,
             farm__deleted_at__isnull=True,
         ).first()
-        if membership is None:
+        if membership is None or (
+            not membership.is_owner
+            and membership.status != UserFarm.Status.ACTIVE
+        ):
             return False
         if membership.is_owner:
             return True
+        if getattr(view, "permission_app", None) == "farm_users":
+            from apps.farms.enums import FarmPermission, expand_permissions
+
+            return bool(
+                expand_permissions(membership.permissions)
+                & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)
+            )
+        if membership.farm_role_id is None:
+            return False
         if (
-            membership.farm_role_id is None
-            or not membership.farm_role.permissions_configured
+            membership.farm_role.deleted_at is not None
+            or membership.farm_role.farm_id != membership.farm_id
         ):
-            return True
-        if membership.farm_role.deleted_at is not None:
             return False
 
-        app_parts = view.__class__.__module__.split(".")
-        if len(app_parts) < 3 or app_parts[0] != "apps":
-            return True
-        app = app_parts[1]
+        app = getattr(view, "permission_app", None)
+        if app is None:
+            app_parts = view.__class__.__module__.split(".")
+            if len(app_parts) < 3 or app_parts[0] != "apps":
+                return False
+            app = app_parts[1]
 
         action_by_method = {
             "GET": "can_view",
@@ -133,7 +150,9 @@ def AdminOr(permission_class):
     class _Permission(BasePermission):
         def has_permission(self, request, view):
             return IsAdmin().has_permission(request, view) or (
-                CompletionPermission().has_permission(request, view)
+                request.user.is_authenticated
+                and request.user.is_profile_complete
+                and not request.user.is_temp_password
                 and permission_class().has_permission(request, view)
             )
 

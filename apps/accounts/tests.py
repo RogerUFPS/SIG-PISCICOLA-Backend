@@ -121,6 +121,11 @@ class AccountAuthenticationTests(TestCase):
         self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
 
     def test_role_app_permissions_apply_to_each_request(self):
+        request = APIRequestFactory().get("/api/species/")
+        request.user = self.user
+        view = SpeciesView(self.farm.pk)
+        self.assertFalse(AppPermission().has_permission(request, view))
+
         FarmRoleAppPermission.objects.create(
             role=self.farm_role,
             app="species",
@@ -129,10 +134,6 @@ class AccountAuthenticationTests(TestCase):
             can_edit=True,
             can_delete=False,
         )
-        request = APIRequestFactory().get("/api/species/")
-        request.user = self.user
-
-        view = SpeciesView(self.farm.pk)
         self.assertTrue(AppPermission().has_permission(request, view))
 
         request.method = "POST"
