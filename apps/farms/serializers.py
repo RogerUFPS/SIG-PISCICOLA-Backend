@@ -114,11 +114,19 @@ class FarmSerializer(serializers.ModelSerializer):
 
 
 def get_role_permission_apps():
-    return {
+    apps_by_label = {
         config.label: config.verbose_name
         for config in apps.get_app_configs()
-        if config.name.startswith("apps.") and config.label != "accounts"
+        if config.name.startswith("apps.")
+        and config.label not in ("accounts", "core")
     }
+    apps_by_label.update(
+        {
+            "core_alerts": "Alertas",
+            "core_auditlogs": "AuditLog",
+        }
+    )
+    return apps_by_label
 
 
 class FarmRoleAppPermissionSerializer(serializers.ModelSerializer):
@@ -132,6 +140,15 @@ class FarmRoleAppPermissionSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        app = attrs.get("app", getattr(self.instance, "app", None))
+        if app in ("core_alerts", "core_auditlogs"):
+            if any(
+                attrs.get(field, getattr(self.instance, field, False))
+                for field in ("can_create", "can_edit", "can_delete")
+            ):
+                raise serializers.ValidationError(
+                    "Alertas y AuditLog solo permiten el permiso de lectura."
+                )
         if any(
             attrs.get(field, getattr(self.instance, field, False))
             for field in ("can_create", "can_edit", "can_delete")
@@ -195,7 +212,10 @@ class FarmRoleSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         app_permissions = validated_data.pop("app_permissions", None)
+        permissions_changed = "permissions" in validated_data
         instance = super().update(instance, validated_data)
+        if permissions_changed:
+            instance.user_farms.update(permissions=instance.permissions)
         if app_permissions is not None:
             instance.permissions_configured = True
             instance.save(update_fields=["permissions_configured"])
@@ -212,11 +232,7 @@ class FarmRoleSerializer(serializers.ModelSerializer):
 class UserFarmSerializer(serializers.ModelSerializer):
     permissions = PermissionsField(required=False, default=0)
     user = UserSummarySerializer(read_only=True)
-    user_id = serializers.PrimaryKeyRelatedField(
-        queryset=apps.get_model("accounts", "User").objects.all(),
-        source="user",
-        write_only=True,
-    )
+    user_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = UserFarm
@@ -229,16 +245,21 @@ class UserFarmSerializer(serializers.ModelSerializer):
             "status",
             "is_owner",
         ]
+        read_only_fields = ["user", "user_id", "farm", "is_owner"]
 
     def validate(self, attrs):
         farm = attrs.get("farm", getattr(self.instance, "farm", None))
         farm_role = attrs.get("farm_role", getattr(self.instance, "farm_role", None))
         user = attrs.get("user", getattr(self.instance, "user", None))
-        is_owner = attrs.get("is_owner", getattr(self.instance, "is_owner", False))
+        is_owner = getattr(self.instance, "is_owner", False)
 
         if farm_role and farm_role.farm_id != farm.id:
             raise serializers.ValidationError(
                 {"farm_role": "El rol no pertenece a esta finca."}
+            )
+        if farm_role and farm_role.deleted_at is not None:
+            raise serializers.ValidationError(
+                {"farm_role": "No se puede asignar un rol inactivo."}
             )
 
         if is_owner:

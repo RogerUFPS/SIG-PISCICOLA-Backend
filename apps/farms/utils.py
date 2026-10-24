@@ -1,4 +1,4 @@
-from apps.accounts.permissions import ROLE_ADMIN, ROLE_PRODUCTOR
+from apps.accounts.permissions import ROLE_ADMIN
 
 from .enums import FarmPermission, expand_permissions
 from .models import FarmRole, UserFarm
@@ -15,8 +15,6 @@ def user_has_farm_permission(user, farm_id: int, permission: FarmPermission) -> 
     if uf is None:
         return False
     if uf.is_owner:
-        return True
-    if role.name == ROLE_PRODUCTOR:
         return True
     return bool(expand_permissions(uf.permissions) & permission)
 

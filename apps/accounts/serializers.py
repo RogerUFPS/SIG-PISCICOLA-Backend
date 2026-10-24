@@ -45,22 +45,17 @@ class InviteOperarioSerializer(serializers.Serializer):
     farm_id = serializers.IntegerField()
 
     def validate_farm_id(self, value):
-        user = self.context["request"].user
+        from apps.farms.permissions import CanManageFarmUsers
 
-        UserFarm = apps.get_model("farms", "UserFarm")
-
-        if user.role.name == "Productor":
-            owns_farm = UserFarm.objects.filter(
-                user=user,
-                farm_id=value,
-                is_owner=True,
-                status=UserFarm.Status.ACTIVE,
-            ).exists()
-
-            if not owns_farm:
-                raise serializers.ValidationError(
-                    "No tienes permisos sobre esta granja."
-                )
+        Farm = apps.get_model("farms", "Farm")
+        if not Farm.objects.filter(pk=value, deleted_at__isnull=True).exists():
+            raise serializers.ValidationError("La finca no existe.")
+        if not CanManageFarmUsers().has_permission(
+            self.context["request"], self.context["view"]
+        ):
+            raise serializers.ValidationError(
+                "No tienes permisos para administrar usuarios en esta finca."
+            )
         return value
 
 

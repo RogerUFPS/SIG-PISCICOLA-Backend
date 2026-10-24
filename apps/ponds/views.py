@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import AdminOr
+from apps.farms.models import UserFarm
 from apps.farms.permissions import (CanManageFarmUsers, CanManagePond,
                                     IsFarmMember)
 
@@ -45,7 +46,11 @@ def _pond_forbidden_for_operario_response():
 
 
 def _filter_ponds_for_operario(qs, request, farm):
-    if request.user.role.name == "Operario":
+    if request.user.role.name == "Operario" and not UserFarm.objects.filter(
+        user=request.user,
+        farm=farm,
+        is_owner=True,
+    ).exists():
         pond_ids = UserFarmPond.objects.filter(
             user=request.user,
             farm=farm,
@@ -120,7 +125,12 @@ class PondDetailView(APIView):
         if not pond:
             return _pond_not_found_response()
 
-        if request.user.role.name == "Operario":
+        if (
+            request.user.role.name == "Operario"
+            and not UserFarm.objects.filter(
+                user=request.user, farm=farm, is_owner=True
+            ).exists()
+        ):
             if not UserFarmPond.objects.filter(
                 user=request.user, farm=farm, pond=pond
             ).exists():

@@ -1,8 +1,7 @@
 from rest_framework.permissions import BasePermission
 
-from apps.accounts.permissions import (CompletionPermission, IsAdmin,
-                                       IsProductor)
-
+from apps.accounts.permissions import CompletionPermission, IsAdmin
+from apps.farms.permissions import IsFarmMember
 from .models import UserFarmPond
 
 
@@ -25,16 +24,16 @@ class IsPondMember(BasePermission):
 class PondDetailPermission(BasePermission):
     def has_permission(self, request, view):
         is_admin = IsAdmin().has_permission(request, view)
-        is_productor = CompletionPermission().has_permission(
+        is_farm_member = CompletionPermission().has_permission(
             request, view
-        ) and IsProductor().has_permission(request, view)
+        ) and IsFarmMember().has_permission(request, view)
 
         if request.method == "GET":
-            return (
-                is_admin or is_productor or IsPondMember().has_permission(request, view)
+            return is_admin or is_farm_member or IsPondMember().has_permission(
+                request, view
             )
 
-        return is_admin or is_productor
+        return is_admin or is_farm_member
 
 
 class IsActiveFarmMember(BasePermission):
@@ -56,13 +55,9 @@ class IsActiveFarmMember(BasePermission):
 class PondListPermission(BasePermission):
     def has_permission(self, request, view):
         is_admin = IsAdmin().has_permission(request, view)
-        is_productor = CompletionPermission().has_permission(
+        is_farm_member = CompletionPermission().has_permission(
             request, view
-        ) and IsProductor().has_permission(request, view)
+        ) and IsFarmMember().has_permission(request, view)
         if request.method == "GET":
-            return (
-                is_admin
-                or is_productor
-                or IsActiveFarmMember().has_permission(request, view)
-            )
-        return is_admin or is_productor
+            return is_admin or is_farm_member
+        return is_admin or is_farm_member

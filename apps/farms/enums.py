@@ -8,8 +8,9 @@ class FarmPermission(IntFlag):
     MANAGE_CYCLE = 1 << 2  #  4
     MANAGE_POND = 1 << 3  #  8
     MANAGE_FARM = 1 << 4  # 16
+    MANAGE_USERS = 1 << 5  # 32
 
-    ALL = (1 << 5) - 1  # 31
+    ALL = (1 << 6) - 1  # 63
 
     @classmethod
     def choices(cls):
@@ -28,6 +29,7 @@ PERMISSION_IMPLIES: dict[FarmPermission, FarmPermission] = {
     ),
     FarmPermission.MANAGE_INVENTORY: FarmPermission.MANAGE_INVENTORY,
     FarmPermission.MANAGE_REVIEWS: FarmPermission.MANAGE_REVIEWS,
+    FarmPermission.MANAGE_USERS: FarmPermission.MANAGE_USERS,
 }
 
 
