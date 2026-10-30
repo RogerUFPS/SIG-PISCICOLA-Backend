@@ -51,6 +51,7 @@ def effective_farm_permissions(membership) -> int:
         farm_role is not None
         and farm_role.deleted_at is None
         and farm_role.farm_id == membership.farm_id
+        and not farm_role.permissions_configured
     ):
         stored |= farm_role.permissions
     return expand_permissions(stored)

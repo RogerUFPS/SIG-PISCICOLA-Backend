@@ -59,6 +59,12 @@ apps deben pertenecer al listado de `/roles/apps/`, no se pueden repetir y
 independientes. Si no se envía `app_permissions`, el rol nuevo queda sin
 permisos por app.
 
+Un rol creado o actualizado con `app_permissions` es un rol configurado. En
+estos roles el campo heredado `permissions` no autoriza operaciones y se guarda
+vacío. La gestión de usuarios (`MANAGE_USERS`) no se deduce de
+`app_permissions`; para otorgarla, el propietario debe asignarla explícitamente
+en `permissions` de la membresía del usuario.
+
 ### `GET /api/farms/<farm_id>/roles/<role_id>/`
 
 Obtiene un rol y sus permisos para una granja.
@@ -66,15 +72,16 @@ Obtiene un rol y sus permisos para una granja.
 ### `PUT /api/farms/<farm_id>/roles/<role_id>/` y
 `PATCH /api/farms/<farm_id>/roles/<role_id>/`
 
-Actualiza el rol. Si se incluye `app_permissions`, la lista reemplaza los
-permisos previos del rol; si se omite, estos no cambian. Envía una lista vacía
-para revocar todos los permisos por app.
+Actualiza el rol. Si se incluye `app_permissions`, el rol queda configurado, la
+lista reemplaza los permisos previos por app y se descartan los permisos
+heredados del rol y sus copias automáticas en las membresías. Si se omite, estos
+no cambian. Envía una lista vacía para revocar todos los permisos por app.
 
 Las autorizaciones consultan el rol y sus permisos en cada solicitud. Por
 ello, los cambios afectan también a operarios con una sesión ya iniciada.
-Al cambiar los permisos `permissions` de un rol, se actualizan los permisos de
-los miembros asignados a ese rol. Al eliminar un rol, sus miembros quedan sin
-rol ni permisos copiados de ese rol.
+Al cambiar los permisos `permissions` de un rol legacy (sin `app_permissions`),
+se actualizan los permisos de los miembros asignados a ese rol. Al eliminar un
+rol, sus miembros quedan sin rol ni permisos copiados de ese rol.
 
 ### `DELETE /api/farms/<farm_id>/roles/<role_id>/`
 
@@ -160,8 +167,10 @@ una lista de permisos de finca:
 Opciones válidas: `MANAGE_REVIEWS`, `MANAGE_INVENTORY`, `MANAGE_CYCLE`,
 `MANAGE_POND`, `MANAGE_FARM` y `MANAGE_USERS`. `MANAGE_USERS` permite gestionar
 miembros y roles de esa finca; `MANAGE_FARM` incluye los demás permisos. Estos
-permisos también pueden incluirse en el campo `permissions` al crear o editar
-un rol de finca. La membresía propietaria (`is_owner: true`) no se puede editar
+permisos también pueden incluirse en el campo `permissions` al crear o editar un
+rol legacy, es decir, un rol sin `app_permissions`. En roles configurados la
+gestión de usuarios debe asignarse explícitamente en `permissions` de la
+membresía. La membresía propietaria (`is_owner: true`) no se puede editar
 ni eliminar desde este endpoint; `is_owner` tampoco es modificable. Un usuario
 con `MANAGE_USERS` puede administrar a los otros miembros, pero no al
 propietario.
@@ -178,6 +187,10 @@ operario se aplican así:
 - `can_view` también debe estar activo para crear, editar o eliminar.
 - El administrador conserva sus privilegios globales; el productor propietario
   conserva la administración de su propia granja.
+- Un rol configurado con `app_permissions` no hereda `MANAGE_USERS` ni
+  `MANAGE_FARM` desde el campo `permissions`. Estos permisos deben asignarse de
+  forma explícita en la membresía para poder consultar roles, catálogo de apps o
+  miembros de la finca.
 - El nombre global de rol `Productor` no concede acceso automático a fincas:
   se requiere una membresía activa en cada finca. El propietario se identifica
   por `is_owner`.
