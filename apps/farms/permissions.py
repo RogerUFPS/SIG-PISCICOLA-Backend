@@ -2,7 +2,7 @@ from rest_framework.permissions import BasePermission
 
 from apps.accounts.permissions import ROLE_ADMIN
 
-from .enums import FarmPermission, expand_permissions
+from .enums import FarmPermission, effective_farm_permissions
 from .models import UserFarm
 
 
@@ -116,7 +116,7 @@ class HasFarmPermission(BasePermission):
         if AppPermission().has_permission(request, view):
             return True
 
-        effective = expand_permissions(uf.permissions)
+        effective = effective_farm_permissions(uf)
         return bool(effective & self.required_permission)
 
 
@@ -138,7 +138,7 @@ class CanManageFarmUsers(BasePermission):
             return False
         if uf.is_owner:
             return True
-        effective = expand_permissions(uf.permissions)
+        effective = effective_farm_permissions(uf)
         return bool(
             effective
             & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)

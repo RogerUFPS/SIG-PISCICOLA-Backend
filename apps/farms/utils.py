@@ -1,6 +1,10 @@
 from apps.accounts.permissions import ROLE_ADMIN
 
-from .enums import FarmPermission, expand_permissions
+from .enums import (
+    FarmPermission,
+    effective_farm_permissions,
+    expand_permissions,
+)
 from .models import FarmRole, UserFarm
 from .permissions import _get_user_farm
 
@@ -16,13 +20,11 @@ def user_has_farm_permission(user, farm_id: int, permission: FarmPermission) -> 
         return False
     if uf.is_owner:
         return True
-    return bool(expand_permissions(uf.permissions) & permission)
+    return bool(effective_farm_permissions(uf) & permission)
 
 
 def get_effective_permissions(user_farm: UserFarm) -> int:
-    if user_farm.is_owner:
-        return int(FarmPermission.ALL)
-    return expand_permissions(user_farm.permissions)
+    return effective_farm_permissions(user_farm)
 
 
 def assign_operario_permissions(user_farm: UserFarm, permissions: list[str]) -> None:

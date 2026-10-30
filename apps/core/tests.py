@@ -140,3 +140,15 @@ class CoreAccessTests(TestCase):
             ).status_code,
             405,
         )
+
+    @patch("apps.core.utils.ensure_overdue_events_alerts")
+    def test_legacy_manage_farm_does_not_combine_core_read_permissions(
+        self, _ensure_alerts
+    ):
+        self.role.permissions = 63
+        self.role.save(update_fields=["permissions"])
+        alerts_url = f"/api/farms/core/{self.farm.pk}/alerts/"
+        logs_url = f"/api/farms/core/{self.farm.pk}/auditlogs/"
+
+        self.assertEqual(self.client.get(alerts_url).status_code, 403)
+        self.assertEqual(self.client.get(logs_url).status_code, 403)

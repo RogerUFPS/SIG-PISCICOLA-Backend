@@ -81,15 +81,16 @@ class AppPermission(BasePermission):
         if membership.is_owner:
             return True
         if getattr(view, "permission_app", None) == "farm_users":
-            from apps.farms.enums import FarmPermission, expand_permissions
+            from apps.farms.enums import (
+                FarmPermission,
+                effective_farm_permissions,
+            )
 
             return bool(
-                expand_permissions(membership.permissions)
+                effective_farm_permissions(membership)
                 & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)
             )
-        if membership.farm_role_id is None:
-            return False
-        if (
+        if membership.farm_role_id is not None and (
             membership.farm_role.deleted_at is not None
             or membership.farm_role.farm_id != membership.farm_id
         ):
@@ -101,6 +102,32 @@ class AppPermission(BasePermission):
             if len(app_parts) < 3 or app_parts[0] != "apps":
                 return False
             app = app_parts[1]
+
+        from apps.farms.enums import FarmPermission, effective_farm_permissions
+
+        legacy_permissions_by_app = {
+            "batch": FarmPermission.MANAGE_CYCLE,
+            "cycle": FarmPermission.MANAGE_CYCLE,
+            "events": FarmPermission.MANAGE_CYCLE,
+            "feeding": FarmPermission.MANAGE_CYCLE,
+            "harvest": FarmPermission.MANAGE_CYCLE,
+            "health": FarmPermission.MANAGE_REVIEWS,
+            "monitoring": FarmPermission.MANAGE_REVIEWS,
+            "ponds": FarmPermission.MANAGE_POND,
+            "products": FarmPermission.MANAGE_INVENTORY,
+            "purchases": FarmPermission.MANAGE_INVENTORY,
+            "sales": FarmPermission.MANAGE_INVENTORY,
+            "farms": FarmPermission.MANAGE_FARM,
+        }
+        legacy_permission = legacy_permissions_by_app.get(app)
+        if (
+            legacy_permission is not None
+            and effective_farm_permissions(membership) & legacy_permission
+        ):
+            return True
+
+        if membership.farm_role_id is None:
+            return False
 
         action_by_method = {
             "GET": "can_view",

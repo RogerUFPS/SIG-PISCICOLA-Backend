@@ -146,6 +146,53 @@ class FarmRolePermissionsTests(TestCase):
         response = self.client.get(f"/api/farms/{self.farm.pk}/roles/apps/")
         self.assertEqual(response.status_code, 200)
 
+    def test_existing_role_permissions_authorize_without_membership_copy(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Legacy permissions",
+            permissions=int(
+                FarmPermission.MANAGE_REVIEWS | FarmPermission.MANAGE_CYCLE
+            ),
+            permissions_configured=True,
+        )
+        UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
+            farm_role=role,
+            permissions=0,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+        )
+
+        self.assertEqual(
+            self.client.get(f"/api/farms/{self.farm.pk}/daily-stats/").status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(
+                f"/api/farms/{self.farm.pk}/production-plans/"
+            ).status_code,
+            200,
+        )
+
+    def test_user_management_permission_is_read_from_existing_role(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Legacy user manager",
+            permissions=int(FarmPermission.MANAGE_USERS),
+        )
+        UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
+            farm_role=role,
+            permissions=0,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+        )
+
+        self.assertEqual(
+            self.client.get(f"/api/farms/{self.farm.pk}/members/").status_code,
+            200,
+        )
+
     def test_user_manager_cannot_grant_permissions_or_manage_owner(self):
         manager_membership = UserFarm.objects.get(
             user=self.operator,
