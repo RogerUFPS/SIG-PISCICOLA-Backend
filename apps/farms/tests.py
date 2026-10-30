@@ -193,6 +193,105 @@ class FarmRolePermissionsTests(TestCase):
             200,
         )
 
+    def test_configured_role_does_not_grant_legacy_user_management(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Configured with legacy bits",
+            permissions=int(FarmPermission.ALL),
+            permissions_configured=True,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=role,
+            app="health",
+            can_view=True,
+        )
+        UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
+            farm_role=role,
+            permissions=0,
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+        )
+
+        for path in ("roles/", "roles/apps/", "members/"):
+            self.assertEqual(
+                self.client.get(f"/api/farms/{self.farm.pk}/{path}").status_code,
+                403,
+            )
+
+    def test_configured_role_requires_explicit_member_user_management(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Configured role",
+            permissions=int(FarmPermission.ALL),
+            permissions_configured=True,
+        )
+        UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
+            farm_role=role,
+            permissions=int(FarmPermission.MANAGE_USERS),
+        )
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+        )
+
+        self.assertEqual(
+            self.client.get(f"/api/farms/{self.farm.pk}/members/").status_code,
+            200,
+        )
+
+    def test_assigning_configured_role_does_not_copy_legacy_permissions(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Configured role",
+            permissions=int(FarmPermission.ALL),
+            permissions_configured=True,
+        )
+        response = self.client.patch(
+            f"/api/farms/{self.farm.pk}/members/{self.operator.pk}/",
+            {"farm_role": role.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        membership = UserFarm.objects.get(user=self.operator, farm=self.farm)
+        self.assertEqual(membership.permissions, 0)
+
+    def test_updating_app_permissions_clears_legacy_and_copied_permissions(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Configured role",
+            permissions=int(FarmPermission.ALL),
+            permissions_configured=True,
+        )
+        UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
+            farm_role=role,
+            permissions=int(FarmPermission.ALL),
+        )
+
+        response = self.client.patch(
+            f"/api/farms/{self.farm.pk}/roles/{role.pk}/",
+            {
+                "app_permissions": [
+                    {"app": "health", "can_view": True},
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        role.refresh_from_db()
+        self.assertEqual(role.permissions, 0)
+        membership = UserFarm.objects.get(user=self.operator, farm=self.farm)
+        self.assertEqual(membership.permissions, 0)
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+        )
+        self.assertEqual(
+            self.client.get(f"/api/farms/{self.farm.pk}/members/").status_code,
+            403,
+        )
+
     def test_user_manager_cannot_grant_permissions_or_manage_owner(self):
         manager_membership = UserFarm.objects.get(
             user=self.operator,
@@ -278,7 +377,7 @@ class FarmRolePermissionsTests(TestCase):
             farm=self.farm,
             name="User manager",
             permissions=int(FarmPermission.MANAGE_USERS),
-            permissions_configured=True,
+            permissions_configured=False,
         )
         self.client.patch(
             f"/api/farms/{self.farm.pk}/members/{self.operator.pk}/",

@@ -57,6 +57,29 @@ expect_get() {
     fi
 }
 
+expect_status() {
+    local token="$1"
+    local path="$2"
+    local expected="$3"
+    local response
+    local status
+
+    response="$(
+        curl --silent --show-error \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --header "Host: ${API_HOST}" \
+            --header "Authorization: Bearer ${token}" \
+            "${API_BASE}/${path}"
+    )"
+    status="$response"
+    printf 'GET /%s -> HTTP %s (esperado %s)\n' "$path" "$status" "$expected"
+    if [[ "$status" != "$expected" ]]; then
+        printf 'Se esperaba HTTP %s para esta lectura.\n' "$expected" >&2
+        return 1
+    fi
+}
+
 printf 'API: %s\n' "$API_BASE"
 read -r -p 'Correo del productor: ' producer_email
 read -r -s -p 'Contraseña del productor: ' producer_password
@@ -124,8 +147,9 @@ expect_get "$producer_token" "farms/${farm_id}/control-stats/"
 expect_get "$producer_token" "farms/${farm_id}/products/"
 
 printf 'Paso 7/7: lecturas del operario con los permisos actuales:\n'
-expect_get "$operator_token" "farms/${farm_id}/roles/"
-expect_get "$operator_token" "farms/${farm_id}/members/"
+expect_status "$operator_token" "farms/${farm_id}/roles/" 403
+expect_status "$operator_token" "farms/${farm_id}/roles/apps/" 403
+expect_status "$operator_token" "farms/${farm_id}/members/" 403
 expect_get "$operator_token" "farms/${farm_id}/ponds/"
 expect_get "$operator_token" "farms/${farm_id}/batches/"
 expect_get "$operator_token" "farms/${farm_id}/production-plans/"

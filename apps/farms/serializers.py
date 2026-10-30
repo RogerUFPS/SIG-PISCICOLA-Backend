@@ -197,6 +197,8 @@ class FarmRoleSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         app_permissions = validated_data.pop("app_permissions", None)
+        if app_permissions is not None:
+            validated_data["permissions"] = 0
         role = FarmRole.objects.create(
             permissions_configured=app_permissions is not None,
             **validated_data,
@@ -213,13 +215,19 @@ class FarmRoleSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         app_permissions = validated_data.pop("app_permissions", None)
+        legacy_permissions = instance.permissions
+        if app_permissions is not None:
+            validated_data["permissions"] = 0
+            validated_data["permissions_configured"] = True
         permissions_changed = "permissions" in validated_data
         instance = super().update(instance, validated_data)
-        if permissions_changed:
+        if app_permissions is not None:
+            instance.user_farms.filter(permissions=legacy_permissions).update(
+                permissions=0
+            )
+        elif permissions_changed:
             instance.user_farms.update(permissions=instance.permissions)
         if app_permissions is not None:
-            instance.permissions_configured = True
-            instance.save(update_fields=["permissions_configured"])
             instance.app_permissions.all().delete()
             FarmRoleAppPermission.objects.bulk_create(
                 [

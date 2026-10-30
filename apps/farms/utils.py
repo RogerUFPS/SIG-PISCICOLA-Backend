@@ -44,7 +44,9 @@ def assign_role_to_operario(user_farm: UserFarm, role: FarmRole) -> None:
         raise ValueError("El rol no pertenece a esta finca.")
 
     user_farm.farm_role = role
-    user_farm.permissions = int(role.permissions)
+    user_farm.permissions = (
+        0 if role.permissions_configured else int(role.permissions)
+    )
     user_farm.save(update_fields=["farm_role", "permissions"])
 
 
