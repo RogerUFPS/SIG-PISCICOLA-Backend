@@ -153,7 +153,7 @@ class FarmRolePermissionsTests(TestCase):
             permissions=int(
                 FarmPermission.MANAGE_REVIEWS | FarmPermission.MANAGE_CYCLE
             ),
-            permissions_configured=True,
+            permissions_configured=False,
         )
         UserFarm.objects.filter(user=self.operator, farm=self.farm).update(
             farm_role=role,

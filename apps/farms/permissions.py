@@ -7,26 +7,22 @@ from .models import UserFarm
 
 
 def _get_farm_pk(view, request=None):
-    farm_pk = (
-        view.kwargs.get("farm_pk")
-        or view.kwargs.get("farm_id")
-        or view.kwargs.get("pk")
-    )
+    kwargs = getattr(view, "kwargs", {}) or {}
+    farm_pk = kwargs.get("farm_pk") or kwargs.get("farm_id")
+    if farm_pk is None and view.__class__.__name__ == "FarmViewSet":
+        farm_pk = kwargs.get("pk")
     if farm_pk is not None or request is None:
         return farm_pk
-    request_data = getattr(request, "data", {})
-    query_params = getattr(request, "query_params", getattr(request, "GET", {}))
-    return (
-        request_data.get("farm_id")
-        or query_params.get("farm_id")
-    )
+    request_data = getattr(request, "data", {}) or {}
+    query_params = getattr(request, "query_params", getattr(request, "GET", {})) or {}
+    return request_data.get("farm_id") or query_params.get("farm_id")
 
 
 def _get_user_farm(user, farm_pk) -> UserFarm | None:
     if not user.is_authenticated:
         return None
     try:
-        uf = UserFarm.objects.select_related("farm").get(
+        uf = UserFarm.objects.select_related("farm", "farm_role").get(
             user=user,
             farm_id=farm_pk,
             farm__deleted_at__isnull=True,
@@ -115,6 +111,8 @@ class HasFarmPermission(BasePermission):
 
         if AppPermission().has_permission(request, view):
             return True
+        if uf.farm_role_id and uf.farm_role and uf.farm_role.permissions_configured:
+            return False
 
         effective = effective_farm_permissions(uf)
         return bool(effective & self.required_permission)
