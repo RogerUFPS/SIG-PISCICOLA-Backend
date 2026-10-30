@@ -39,3 +39,18 @@ def expand_permissions(stored: int) -> int:
         if stored & perm:
             result |= int(implied)
     return result
+
+
+def effective_farm_permissions(membership) -> int:
+    if membership.is_owner:
+        return int(FarmPermission.ALL)
+
+    stored = membership.permissions
+    farm_role = getattr(membership, "farm_role", None)
+    if (
+        farm_role is not None
+        and farm_role.deleted_at is None
+        and farm_role.farm_id == membership.farm_id
+    ):
+        stored |= farm_role.permissions
+    return expand_permissions(stored)
