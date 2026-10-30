@@ -196,17 +196,18 @@ class FarmRoleSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        app_permissions = validated_data.pop("app_permissions", [])
+        app_permissions = validated_data.pop("app_permissions", None)
         role = FarmRole.objects.create(
-            permissions_configured=True,
+            permissions_configured=app_permissions is not None,
             **validated_data,
         )
-        FarmRoleAppPermission.objects.bulk_create(
-            [
-                FarmRoleAppPermission(role=role, **permission)
-                for permission in app_permissions
-            ]
-        )
+        if app_permissions:
+            FarmRoleAppPermission.objects.bulk_create(
+                [
+                    FarmRoleAppPermission(role=role, **permission)
+                    for permission in app_permissions
+                ]
+            )
         return role
 
     @transaction.atomic
