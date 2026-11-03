@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .authentication import SessionTokenRefreshSerializer
 from .models import Invitation, User, UserSession
 from .permissions import AdminOr, IsAdmin, IsAdminOrValid, IsProductor
+from apps.farms.permissions import CanManageFarmUsers
 from .serializers import (ChangePasswordSerializer, CompleteProfileSerializer,
                           ConfirmResetPasswordSerializer, InvitationSerializer,
                           InviteOperarioSerializer, InviteProductorSerializer,
@@ -164,11 +165,13 @@ class InviteProductorView(APIView):
 
 
 class InviteOperarioView(APIView):
-    permission_classes = [AdminOr(IsProductor)]
+    permission_classes = [AdminOr(CanManageFarmUsers)]
+    permission_app = "farm_users"
 
     def post(self, request):
         serializer = InviteOperarioSerializer(
-            data=request.data, context={"request": request}
+            data=request.data,
+            context={"request": request, "view": self},
         )
         serializer.is_valid(raise_exception=True)
         try:
@@ -188,13 +191,15 @@ class InviteOperarioView(APIView):
 
 class InvitationListView(generics.ListAPIView):
     serializer_class = InvitationSerializer
-    permission_classes = [AdminOr(IsProductor)]
+    permission_classes = [AdminOr(CanManageFarmUsers)]
+    permission_app = "farm_users"
 
     def get_queryset(self):
-        return Invitation.objects.filter(invited_by=self.request.user).select_related(
-            "invited_by",
-            "user",
-            "farm_id",
+        return (
+            Invitation.objects.filter(
+                farm_id_id=self.request.query_params.get("farm_id")
+            )
+            .select_related("invited_by", "user", "farm_id")
         )
 
 

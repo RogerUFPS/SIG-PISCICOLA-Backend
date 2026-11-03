@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -71,7 +72,10 @@ class FarmViewSet(viewsets.ModelViewSet):
                 )
             return queryset.distinct()
 
-        return queryset.filter(user_farms__user=user)
+        return queryset.filter(
+            user_farms__user=user,
+            user_farms__status=UserFarm.Status.ACTIVE,
+        )
 
     def perform_create(self, serializer):
         productor = serializer.validated_data.pop("_productor", None)
@@ -85,6 +89,7 @@ class FarmViewSet(viewsets.ModelViewSet):
             status=UserFarm.Status.ACTIVE,
         )
 
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         farm = self.get_object()
 
@@ -124,10 +129,11 @@ class FarmViewSet(viewsets.ModelViewSet):
 
 class FarmRoleViewSet(viewsets.ModelViewSet):
     serializer_class = FarmRoleSerializer
+    permission_app = "farm_users"
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            perms = [AdminOr(CanManageFarmUsers)]
+            perms = [AdminOr(IsFarmOwner)]
         else:
             perms = [AdminOr(IsFarmMember)]
         return [p() for p in perms]
@@ -155,8 +161,10 @@ class FarmRoleViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(farm_id=self.kwargs["farm_pk"])
 
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         role = self.get_object()
+        role.user_farms.update(farm_role=None, permissions=0)
         role.deleted_at = timezone.now()
         role.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -170,6 +178,7 @@ class UserFarmViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = UserFarmSerializer
+    permission_app = "farm_users"
     lookup_field = "user_id"
     lookup_url_kwarg = "user_id"
 
@@ -192,6 +201,31 @@ class UserFarmViewSet(
 
     def update(self, request, *args, **kwargs):
         member = self.get_object()
+        if member.is_owner:
+            return Response(
+                {"detail": "No se puede modificar al propietario de la finca."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        actor_is_owner = UserFarm.objects.filter(
+            user=request.user,
+            farm_id=member.farm_id,
+            is_owner=True,
+        ).exists()
+        actor_is_admin = getattr(
+            getattr(request.user, "role", None), "name", None
+        ) == "Admin"
+        if not actor_is_owner and not actor_is_admin and any(
+            field in request.data for field in ("permissions", "farm_role")
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Solo el propietario puede asignar permisos o roles "
+                        "de finca."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if member.user.role.name == "Operario":
             if "farm_role" in request.data:
@@ -233,7 +267,7 @@ class UserFarmViewSet(
         if member.is_owner:
             return Response(
                 {"detail": "No se puede eliminar al propietario de la finca."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_403_FORBIDDEN,
             )
         member.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

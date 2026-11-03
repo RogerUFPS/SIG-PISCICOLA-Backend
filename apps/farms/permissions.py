@@ -1,24 +1,28 @@
 from rest_framework.permissions import BasePermission
 
-from apps.accounts.permissions import ROLE_ADMIN, ROLE_PRODUCTOR
+from apps.accounts.permissions import ROLE_ADMIN
 
-from .enums import FarmPermission, expand_permissions
+from .enums import FarmPermission, effective_farm_permissions
 from .models import UserFarm
 
 
-def _get_farm_pk(view):
-    return (
-        view.kwargs.get("farm_pk")
-        or view.kwargs.get("farm_id")
-        or view.kwargs.get("pk")
-    )
+def _get_farm_pk(view, request=None):
+    kwargs = getattr(view, "kwargs", {}) or {}
+    farm_pk = kwargs.get("farm_pk") or kwargs.get("farm_id")
+    if farm_pk is None and view.__class__.__name__ == "FarmViewSet":
+        farm_pk = kwargs.get("pk")
+    if farm_pk is not None or request is None:
+        return farm_pk
+    request_data = getattr(request, "data", {}) or {}
+    query_params = getattr(request, "query_params", getattr(request, "GET", {})) or {}
+    return request_data.get("farm_id") or query_params.get("farm_id")
 
 
 def _get_user_farm(user, farm_pk) -> UserFarm | None:
     if not user.is_authenticated:
         return None
     try:
-        uf = UserFarm.objects.select_related("farm").get(
+        uf = UserFarm.objects.select_related("farm", "farm_role").get(
             user=user,
             farm_id=farm_pk,
             farm__deleted_at__isnull=True,
@@ -44,17 +48,29 @@ def user_may_access_farm(user, farm_pk) -> bool:
 class IsFarmMember(BasePermission):
 
     def has_permission(self, request, view):
-        farm_pk = _get_farm_pk(view)
-        if not farm_pk:
-            return True
-        return user_may_access_farm(request.user, farm_pk)
+        farm_pk = _get_farm_pk(view, request)
+        if farm_pk is None:
+            if not request.user.is_authenticated:
+                return False
+            if getattr(getattr(request.user, "role", None), "name", None) == ROLE_ADMIN:
+                return True
+            return UserFarm.objects.filter(
+                user=request.user,
+                status=UserFarm.Status.ACTIVE,
+                farm__deleted_at__isnull=True,
+            ).exists()
+        if not user_may_access_farm(request.user, farm_pk):
+            return False
+        from apps.accounts.permissions import AppPermission
+
+        return AppPermission().has_permission(request, view)
 
 
 class IsFarmOwner(BasePermission):
     def has_permission(self, request, view):
-        farm_pk = _get_farm_pk(view)
-        if not farm_pk:
-            return True
+        farm_pk = _get_farm_pk(view, request)
+        if farm_pk is None:
+            return False
         if not request.user.is_authenticated:
             return False
         role = getattr(request.user, "role", None)
@@ -70,9 +86,9 @@ class HasFarmPermission(BasePermission):
     required_permission: FarmPermission = FarmPermission.MANAGE_REVIEWS
 
     def has_permission(self, request, view):
-        farm_pk = _get_farm_pk(view)
-        if not farm_pk:
-            return True
+        farm_pk = _get_farm_pk(view, request)
+        if farm_pk is None:
+            return False
         if not request.user.is_authenticated:
             return False
         role = getattr(request.user, "role", None)
@@ -86,20 +102,27 @@ class HasFarmPermission(BasePermission):
             return False
         if uf.is_owner:
             return True
-        if role.name == ROLE_PRODUCTOR:
-            return True
-        if uf.farm_role and uf.farm_role.permissions_configured:
-            return True
+        if uf.farm_role and (
+            uf.farm_role.farm_id != uf.farm_id
+            or uf.farm_role.deleted_at is not None
+        ):
+            return False
+        from apps.accounts.permissions import AppPermission
 
-        effective = expand_permissions(uf.permissions)
+        if AppPermission().has_permission(request, view):
+            return True
+        if uf.farm_role_id and uf.farm_role and uf.farm_role.permissions_configured:
+            return False
+
+        effective = effective_farm_permissions(uf)
         return bool(effective & self.required_permission)
 
 
 class CanManageFarmUsers(BasePermission):
     def has_permission(self, request, view):
-        farm_pk = _get_farm_pk(view)
-        if not farm_pk:
-            return True
+        farm_pk = _get_farm_pk(view, request)
+        if farm_pk is None:
+            return False
         if not request.user.is_authenticated:
             return False
         role = getattr(request.user, "role", None)
@@ -113,13 +136,11 @@ class CanManageFarmUsers(BasePermission):
             return False
         if uf.is_owner:
             return True
-        if role.name == ROLE_PRODUCTOR:
-            return True
-        if uf.farm_role and uf.farm_role.permissions_configured:
-            return True
-
-        effective = expand_permissions(uf.permissions)
-        return bool(effective & FarmPermission.MANAGE_FARM)
+        effective = effective_farm_permissions(uf)
+        return bool(
+            effective
+            & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)
+        )
 
 
 def make_farm_permission(perm: FarmPermission) -> type:

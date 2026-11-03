@@ -8,7 +8,7 @@ farm_router.register(r"alerts", AlertViewSet, basename="alert")
 
 global_router = DefaultRouter()
 global_router.register(r"unit", UnitView, basename="unit")
-global_router.register(r"auditlog", AuditLogView, basename="auditlog")
+farm_router.register(r"auditlogs", AuditLogView, basename="auditlog")
 
 urlpatterns = [
     path("farms/core/<int:farm_pk>/", include(farm_router.urls)),

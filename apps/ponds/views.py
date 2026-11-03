@@ -37,23 +37,6 @@ def _pond_not_found_response():
     )
 
 
-def _pond_forbidden_for_operario_response():
-    return Response(
-        {"detail": "No tienes permiso para acceder a este estanque."},
-        status=status.HTTP_403_FORBIDDEN,
-    )
-
-
-def _filter_ponds_for_operario(qs, request, farm):
-    if request.user.role.name == "Operario":
-        pond_ids = UserFarmPond.objects.filter(
-            user=request.user,
-            farm=farm,
-        ).values_list("pond_id", flat=True)
-        qs = qs.filter(id__in=pond_ids)
-    return qs
-
-
 class PondListCreateView(APIView):
 
     def get_permissions(self):
@@ -67,8 +50,6 @@ class PondListCreateView(APIView):
             return _farm_not_found_response()
 
         qs = Pond.objects.filter(farm=farm, deleted_at__isnull=True).order_by("-id")
-        qs = _filter_ponds_for_operario(qs, request, farm)
-
         return Response(PondSerializer(qs, many=True).data)
 
     def post(self, request, farm_id):
@@ -100,7 +81,6 @@ class PondAllowedListView(APIView):
             .exclude(status=Pond.Status.INACTIVE)
             .order_by("-id")
         )
-        ponds = _filter_ponds_for_operario(ponds, request, farm)
         return Response(PondSerializer(ponds, many=True).data)
 
 
@@ -119,12 +99,6 @@ class PondDetailView(APIView):
         pond = get_pond_or_404(farm, pond_id)
         if not pond:
             return _pond_not_found_response()
-
-        if request.user.role.name == "Operario":
-            if not UserFarmPond.objects.filter(
-                user=request.user, farm=farm, pond=pond
-            ).exists():
-                return _pond_forbidden_for_operario_response()
 
         return Response(PondSerializer(pond).data)
 
