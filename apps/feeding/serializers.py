@@ -874,38 +874,26 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
                 "No se puede modificar un evento de un ciclo que no está en progreso."
             )
 
+        if instance.feeding_plan.deleted_at is not None:
+            raise serializers.ValidationError(
+                "No se puede registrar alimentación con un plan archivado."
+            )
+
+        if feeding_plan_lifecycle_state(instance.feeding_plan) == "finished":
+            raise serializers.ValidationError(
+                "No se puede registrar alimentación con un plan que ya finalizó."
+            )
+
         if instance.status == FeedingEvent.Status.SKIPPED:
             raise serializers.ValidationError(
                 "No se puede modificar un evento omitido."
             )
 
         if instance.status == FeedingEvent.Status.COMPLETED:
-            if "status" in data:
-                if data["status"] == FeedingEvent.Status.SKIPPED:
-                    extra = set(data) - {"status"}
-                    if extra:
-                        raise serializers.ValidationError(
-                            {
-                                "status": (
-                                    "Para omitir un evento completado envíe solo "
-                                    "status=skipped (se devolverá el inventario descontado)."
-                                )
-                            }
-                        )
-                    return data
-                raise serializers.ValidationError(
-                    {
-                        "status": (
-                            "No puede cambiar el estado de un evento ya completado; use "
-                            "status=skipped para revertir o corrija cantidad y unidad."
-                        )
-                    }
-                )
-            if not data:
-                raise serializers.ValidationError(
-                    "Envíe actual_quantity y/o actual_unit para corregir el registro."
-                )
-            return data
+            raise serializers.ValidationError(
+                "No se puede modificar directamente un suministro confirmado. "
+                "El registro original debe conservarse para garantizar su trazabilidad."
+            )
 
         # scheduled
         if "status" not in data:
@@ -989,37 +977,6 @@ class FeedingEventUpdateSerializer(serializers.ModelSerializer):
             if request and getattr(request.user, "is_authenticated", False)
             else None
         )
-
-        if instance.status == FeedingEvent.Status.COMPLETED:
-            if validated_data.get("status") == FeedingEvent.Status.SKIPPED:
-                with transaction.atomic():
-                    clear_feeding_inventory_for_event(instance.pk)
-                    instance.status = FeedingEvent.Status.SKIPPED
-                    instance.actual_quantity = None
-                    instance.actual_unit = None
-                    instance.completed_at = timezone.now()
-                    if user is not None:
-                        instance.completed_by = user
-                    instance.save()
-                self._refresh_monitoring_controls(instance)
-                return instance
-
-            with transaction.atomic():
-                if "actual_quantity" in validated_data:
-                    instance.actual_quantity = validated_data["actual_quantity"]
-                if "actual_unit" in validated_data:
-                    instance.actual_unit = validated_data["actual_unit"]
-                if (
-                    "actual_quantity" in validated_data
-                    or "actual_unit" in validated_data
-                ):
-                    try:
-                        sync_feeding_inventory_for_event(instance)
-                    except ValueError as exc:
-                        raise serializers.ValidationError({"detail": str(exc)}) from exc
-                instance.save()
-            self._refresh_monitoring_controls(instance)
-            return instance
 
         new_status = validated_data["status"]
 
