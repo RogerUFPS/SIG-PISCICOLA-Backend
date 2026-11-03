@@ -5,7 +5,32 @@ from django.utils import timezone
 from apps.core.models import Alert
 from apps.core.utils import create_alert, resolve_alert
 
-from .models import TreatmentEvent
+from .models import HealthStat, TreatmentEvent
+
+
+@receiver(
+    post_save,
+    sender=HealthStat,
+    dispatch_uid="health_stat_disease_alert_v1",
+)
+def health_stat_disease_alert(sender, instance: HealthStat, created, **kwargs):
+    if not created:
+        return
+
+    create_alert(
+        farm=instance.farm,
+        pond=instance.pond,
+        cycle=instance.cycle,
+        source_type=Alert.SourceType.HEALTH_STAT,
+        source_id=instance.id,
+        description=f"Diagnóstico sanitario: {instance.disease_name}",
+        message=(
+            f"Se registró {instance.disease_name} en el ciclo "
+            f"{instance.cycle.name}, estanque {instance.pond.name}, "
+            f"con fecha {instance.date}."
+        ),
+        severity=instance.severity_level,
+    )
 
 
 @receiver(
