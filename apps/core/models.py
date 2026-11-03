@@ -103,6 +103,7 @@ class AuditLog(models.Model):
 class Alert(models.Model):
     class SourceType(models.TextChoices):
         HEALTH = "Health", "Salud"
+        HEALTH_STAT = "HealthStat", "Diagnóstico sanitario"
         STOCK = "Stock", "Stock"
         AMBIENTAL = "Ambiental", "Ambiental"
         CONTROL = "Control", "Control"

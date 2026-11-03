@@ -105,7 +105,7 @@ class FeedingEvent(models.Model):
     date = models.DateField()
     scheduled_time = models.TimeField()
     ration_number = models.PositiveIntegerField()
-    planned_quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    planned_quantity = models.DecimalField(max_digits=14, decimal_places=6)
     planned_unit = models.ForeignKey(
         "core.Unit",
         on_delete=models.PROTECT,

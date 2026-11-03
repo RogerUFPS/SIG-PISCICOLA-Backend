@@ -131,6 +131,29 @@ def collect_feeding_plan_business_errors(
         errors["feeding_schedule"] = (
             "La especie del cronograma debe coincidir con la del ciclo."
         )
+
+    biological_states = set(
+        CyclePondBatch.objects.filter(cycle_id=cycle.pk).values_list(
+            "pond_batch__batch__biological_state", flat=True
+        )
+    )
+    if not biological_states:
+        errors["feeding_schedule"] = (
+            "No se puede validar la etapa del cronograma porque el ciclo no tiene "
+            "un lote asociado."
+        )
+    elif len(biological_states) > 1:
+        errors["feeding_schedule"] = (
+            "El ciclo contiene lotes con etapas biológicas diferentes; corrija esa "
+            "inconsistencia antes de asignar un cronograma."
+        )
+    else:
+        biological_state = next(iter(biological_states))
+        if schedule.type != biological_state:
+            errors["feeding_schedule"] = (
+                "El cronograma no es compatible con la etapa biológica del ciclo "
+                f"({biological_state})."
+            )
     if cycle.state in (Cycle.State.FINISHED, Cycle.State.CANCELLED):
         errors["cycle"] = (
             "No se puede asociar un plan a un ciclo finalizado o cancelado."
@@ -371,11 +394,11 @@ def planned_feed_quantity_per_ration(
     - Ración por toma (quantity) = relación diaria / veces al día
     """
     if times_per_day < 1:
-        return Decimal("0").quantize(Decimal("0.01"))
+        return Decimal("0").quantize(Decimal("0.000001"))
     biomasa = (fish_count * avg_weight_g) / Decimal("1000")
     relacion_diaria = (biomasa * feeding_rate_percentage) / Decimal("100")
     racion_por_toma = relacion_diaria / Decimal(times_per_day)
-    return racion_por_toma.quantize(Decimal("0.01"))
+    return racion_por_toma.quantize(Decimal("0.000001"))
 
 
 def create_feeding_events_for_plan(plan: FeedingPlan) -> int:
