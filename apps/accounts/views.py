@@ -3,10 +3,13 @@
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -25,13 +28,39 @@ from .utils import (accept_invitation, change_user_password, invite_operario,
                     invite_productor, send_reset_password_email)
 
 
+class ActiveSessionConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Esta cuenta ya tiene una sesión activa."
+    default_code = "active_session_exists"
+
+
 def get_tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    session = UserSession.objects.create(
-        user=user,
-        expires_at=timezone.now() + settings.JWT_SESSION_ABSOLUTE_LIFETIME,
-    )
-    refresh["sid"] = str(session.pk)
+    now = timezone.now()
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            UserSession.objects.filter(
+                user=locked_user,
+                revoked_at__isnull=True,
+            ).filter(
+                Q(expires_at__lte=now)
+                | Q(last_activity__lte=now - settings.JWT_IDLE_TIMEOUT)
+            ).update(revoked_at=now)
+            if UserSession.objects.filter(
+                user=locked_user,
+                revoked_at__isnull=True,
+                expires_at__gt=now,
+            ).exists():
+                raise ActiveSessionConflict()
+
+            session = UserSession.objects.create(
+                user=locked_user,
+                expires_at=now + settings.JWT_SESSION_ABSOLUTE_LIFETIME,
+            )
+            refresh = RefreshToken.for_user(locked_user)
+            refresh["sid"] = str(session.pk)
+    except IntegrityError as exc:
+        raise ActiveSessionConflict() from exc
     return {
         "refresh": str(refresh),
         "access": str(refresh.access_token),

@@ -2,6 +2,8 @@ from django.apps import apps
 from django.db import transaction
 from rest_framework import serializers
 
+from apps.core.signals import audit_bulk_create, audit_queryset_update
+
 from .enums import FarmPermission
 from .models import City, Department, Farm, FarmRole, FarmRoleAppPermission, UserFarm
 
@@ -204,7 +206,8 @@ class FarmRoleSerializer(serializers.ModelSerializer):
             **validated_data,
         )
         if app_permissions:
-            FarmRoleAppPermission.objects.bulk_create(
+            audit_bulk_create(
+                FarmRoleAppPermission,
                 [
                     FarmRoleAppPermission(role=role, **permission)
                     for permission in app_permissions
@@ -222,14 +225,19 @@ class FarmRoleSerializer(serializers.ModelSerializer):
         permissions_changed = "permissions" in validated_data
         instance = super().update(instance, validated_data)
         if app_permissions is not None:
-            instance.user_farms.filter(permissions=legacy_permissions).update(
-                permissions=0
+            audit_queryset_update(
+                instance.user_farms.filter(permissions=legacy_permissions),
+                permissions=0,
             )
         elif permissions_changed:
-            instance.user_farms.update(permissions=instance.permissions)
+            audit_queryset_update(
+                instance.user_farms.all(),
+                permissions=instance.permissions,
+            )
         if app_permissions is not None:
             instance.app_permissions.all().delete()
-            FarmRoleAppPermission.objects.bulk_create(
+            audit_bulk_create(
+                FarmRoleAppPermission,
                 [
                     FarmRoleAppPermission(role=instance, **permission)
                     for permission in app_permissions

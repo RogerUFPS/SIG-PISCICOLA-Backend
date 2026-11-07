@@ -1,4 +1,5 @@
 from apps.core.models import Alert
+from apps.core.signals import audit_queryset_update
 from apps.feeding.models import FeedingEvent
 from apps.health.models import TreatmentEvent
 from apps.monitoring.models import FishEvaluated
@@ -14,7 +15,7 @@ THRESHOLDS = [5, 10, 15, 20, 25]
 def _resolve_alerts(qs):
     if not qs.exists():
         return
-    qs.update(is_resolved=True, resolved_at=timezone.now())
+    audit_queryset_update(qs, is_resolved=True, resolved_at=timezone.now())
 
 
 class Command(BaseCommand):
@@ -151,50 +152,54 @@ class Command(BaseCommand):
             status=FeedingEvent.Status.SCHEDULED
         )
         for ev in completed_feed_qs:
-            Alert.objects.filter(
-                source_type=Alert.SourceType.FEEDING,
-                source_id=ev.id,
-                is_resolved=False,
-            ).update(is_resolved=True, resolved_at=timezone.now())
-
-        # 4) TreatmentEvent overdue
-        try:
-            treatment_qs = TreatmentEvent.objects.filter(
-                date__lte=today, status=TreatmentEvent.Status.SCHEDULED
-            )
-            if farm_id:
-                treatment_qs = treatment_qs.filter(farm_id=farm_id)
-            for ev in treatment_qs:
-                existing = Alert.objects.filter(
-                    farm=ev.farm,
-                    source_type=Alert.SourceType.HEALTH,
+            audit_queryset_update(
+                Alert.objects.filter(
+                    source_type=Alert.SourceType.FEEDING,
                     source_id=ev.id,
                     is_resolved=False,
-                )
-                if not existing.exists():
-                    Alert.objects.create(
-                        farm=ev.farm,
-                        pond=ev.pond,
-                        cycle=ev.cycle,
-                        source_type=Alert.SourceType.HEALTH,
-                        source_id=ev.id,
-                        description=f"TreatmentEvent pendiente ({ev.id})",
-                        message=f"Evento de tratamiento programado para {ev.date} no cumplido.",
-                        severity=Alert.Severity.MEDIUM,
-                    )
-
-            # resolve treatment alerts for completed events
-            completed_treat_qs = TreatmentEvent.objects.exclude(
-                status=TreatmentEvent.Status.SCHEDULED
+                ),
+                is_resolved=True,
+                resolved_at=timezone.now(),
             )
-            for ev in completed_treat_qs:
+
+        # 4) TreatmentEvent overdue
+        treatment_qs = TreatmentEvent.objects.filter(
+            date__lte=today, status=TreatmentEvent.Status.SCHEDULED
+        )
+        if farm_id:
+            treatment_qs = treatment_qs.filter(farm_id=farm_id)
+        for ev in treatment_qs:
+            existing = Alert.objects.filter(
+                farm=ev.farm,
+                source_type=Alert.SourceType.HEALTH,
+                source_id=ev.id,
+                is_resolved=False,
+            )
+            if not existing.exists():
+                Alert.objects.create(
+                    farm=ev.farm,
+                    pond=ev.pond,
+                    cycle=ev.cycle,
+                    source_type=Alert.SourceType.HEALTH,
+                    source_id=ev.id,
+                    description=f"TreatmentEvent pendiente ({ev.id})",
+                    message=f"Evento de tratamiento programado para {ev.date} no cumplido.",
+                    severity=Alert.Severity.MEDIUM,
+                )
+
+        # resolve treatment alerts for completed events
+        completed_treat_qs = TreatmentEvent.objects.exclude(
+            status=TreatmentEvent.Status.SCHEDULED
+        )
+        for ev in completed_treat_qs:
+            audit_queryset_update(
                 Alert.objects.filter(
                     source_type=Alert.SourceType.HEALTH,
                     source_id=ev.id,
                     is_resolved=False,
-                ).update(is_resolved=True, resolved_at=timezone.now())
-        except Exception:
-            # TreatmentEvent model may not exist or be in a different app structure
-            pass
+                ),
+                is_resolved=True,
+                resolved_at=timezone.now(),
+            )
 
         self.stdout.write("Alerts generation complete.")

@@ -1,5 +1,7 @@
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError, connection, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -91,7 +93,11 @@ class CoreAccessTests(TestCase):
         )
         response = self.client.get(logs_url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
+        results = response.data["results"]
+        self.assertTrue(
+            any(log["description"] == "Farm updated" for log in results)
+        )
+        self.assertTrue(all(log["farm_id"] == self.farm.pk for log in results))
 
     @patch("apps.core.utils.ensure_overdue_events_alerts")
     def test_alerts_and_audit_logs_are_read_only(self, _ensure_alerts):
@@ -119,6 +125,7 @@ class CoreAccessTests(TestCase):
 
         alert_url = f"/api/farms/core/{self.farm.pk}/alerts/{alert.pk}/"
         log_url = f"/api/farms/core/{self.farm.pk}/auditlogs/{audit_log.pk}/"
+        logs_url = f"/api/farms/core/{self.farm.pk}/auditlogs/"
         self.assertIn(
             self.client.patch(
                 alert_url, {"message": "Changed"}, format="json"
@@ -126,6 +133,40 @@ class CoreAccessTests(TestCase):
             (403, 405),
         )
         self.assertIn(self.client.delete(log_url).status_code, (403, 405))
+        self.assertIn(
+            self.client.post(
+                logs_url,
+                {
+                    "description": "Injected log",
+                    "type_source": AuditLog.TypeSource.FARM,
+                },
+                format="json",
+            ).status_code,
+            (403, 405),
+        )
+        with self.assertRaises(ValidationError):
+            audit_log.description = "Changed"
+            audit_log.save()
+        with self.assertRaises(ValidationError):
+            audit_log.delete()
+        with self.assertRaises(ValidationError):
+            AuditLog.objects.filter(pk=audit_log.pk).update(
+                description="Changed"
+            )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE audit_log SET description = %s WHERE id = %s",
+                        ["Changed", audit_log.pk],
+                    )
+        with self.assertRaises(DatabaseError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM audit_log WHERE id = %s",
+                        [audit_log.pk],
+                    )
 
     def test_units_are_publicly_readable_and_read_only(self):
         Unit.objects.create(symbol="kg", name="Kilogram")
@@ -140,6 +181,68 @@ class CoreAccessTests(TestCase):
             ).status_code,
             405,
         )
+
+    def test_farm_owned_changes_are_audited(self):
+        role = FarmRole.objects.create(farm=self.farm, name="Audited role")
+        created = AuditLog.objects.get(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.FARM_ROLE,
+            source_id=role.pk,
+            description=f"FarmRole {role.pk} created",
+        )
+        self.assertIsNone(created.old_values)
+        self.assertEqual(created.new_values["name"], "Audited role")
+
+        role.name = "Renamed role"
+        role.save()
+        updated = AuditLog.objects.get(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.FARM_ROLE,
+            source_id=role.pk,
+            description=f"FarmRole {role.pk} updated",
+        )
+        self.assertEqual(updated.old_values["name"], "Audited role")
+        self.assertEqual(updated.new_values["name"], "Renamed role")
+
+        role_id = role.pk
+        role.delete()
+        deleted = AuditLog.objects.get(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.FARM_ROLE,
+            source_id=role_id,
+            description=f"FarmRole {role_id} deleted",
+        )
+        self.assertEqual(deleted.old_values["name"], "Renamed role")
+        self.assertIsNone(deleted.new_values)
+
+    def test_audit_logs_are_always_paginated(self):
+        FarmRoleAppPermission.objects.create(
+            role=self.role,
+            app="core_auditlogs",
+            can_view=True,
+        )
+        AuditLog.objects.bulk_create(
+            [
+                AuditLog(
+                    farm_id=self.farm.pk,
+                    description=f"Page test {index}",
+                    type_source=AuditLog.TypeSource.FARM,
+                )
+                for index in range(55)
+            ]
+        )
+        expected_count = AuditLog.objects.filter(farm_id=self.farm.pk).count()
+
+        url = f"/api/farms/core/{self.farm.pk}/auditlogs/"
+        first_page = self.client.get(url)
+        second_page = self.client.get(url, {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.data["count"], expected_count)
+        self.assertEqual(len(first_page.data["results"]), 50)
+        self.assertIsNotNone(first_page.data["next"])
+        self.assertEqual(len(second_page.data["results"]), expected_count - 50)
+        self.assertIsNone(second_page.data["next"])
 
     @patch("apps.core.utils.ensure_overdue_events_alerts")
     def test_legacy_manage_farm_does_not_combine_core_read_permissions(

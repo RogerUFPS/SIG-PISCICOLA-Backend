@@ -51,6 +51,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "apps.accounts.middleware.ForceTempPasswordChangeMiddleware",
+    "apps.core.middleware.AuditContextMiddleware",
 ]
 
 REST_FRAMEWORK = {

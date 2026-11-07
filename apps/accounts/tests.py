@@ -103,6 +103,26 @@ class AccountAuthenticationTests(TestCase):
         with self.assertRaises(TokenError):
             RefreshToken(self.tokens["refresh"])
 
+    def test_login_blocks_a_second_active_session_for_the_account(self):
+        self.user.set_password("test-password")
+        self.user.save(update_fields=["password"])
+
+        response = APIClient().post(
+            "/api/auth/login/",
+            {"email": self.user.email, "password": "test-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            UserSession.objects.filter(
+                user=self.user,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            ).count(),
+            1,
+        )
+
     def test_refresh_activity_extends_session_and_rotates_tokens(self):
         session = UserSession.objects.get(user=self.user)
         session.last_activity = timezone.now() - timedelta(minutes=14)

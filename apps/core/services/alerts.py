@@ -1,4 +1,5 @@
 from apps.core.models import Alert
+from apps.core.signals import audit_queryset_update
 from django.utils import timezone
 
 
@@ -106,7 +107,8 @@ def resolve_alerts(
         pond=pond,
         farm=farm,
     )
-    qs.update(
+    audit_queryset_update(
+        qs,
         is_resolved=True,
         resolved_at=timezone.now(),
         resolved_by=resolved_by,

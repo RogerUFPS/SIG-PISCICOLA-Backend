@@ -5,6 +5,13 @@ Los roles que se configuran en esta sección son perfiles de trabajo locales a
 una granja; no crean nuevos tipos globales de usuario. El productor propietario
 administra los roles y asigna cada rol a los operarios de esa granja.
 
+## Sesiones de cuenta
+
+Cada cuenta puede tener una sola sesión activa. Si se intenta iniciar sesión
+mientras existe una sesión vigente para esa cuenta, la API responde `409
+Conflict`; la sesión anterior debe cerrarse o vencer por inactividad o por su
+duración máxima antes de permitir otro inicio de sesión.
+
 ### `GET /api/farms/<farm_id>/roles/apps/`
 
 Lista las aplicaciones disponibles para configurar permisos de la finca,
@@ -197,4 +204,3 @@ operario se aplican así:
 
 Los permisos propios del recurso —por ejemplo, que un operario tenga asignado
 un estanque— se siguen comprobando además del rol de la granja.
-

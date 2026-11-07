@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from apps.core.models import Alert
+from apps.core.signals import audit_queryset_update
 from apps.core.services.alerts import resolve_farm
 from apps.core.utils import create_alert
 
@@ -40,7 +41,11 @@ def fish_evaluated_mortality_alert(sender, instance: FishEvaluated, created, **k
 
     if reached is None:
         if existing_qs.exists():
-            existing_qs.update(is_resolved=True, resolved_at=timezone.now())
+            audit_queryset_update(
+                existing_qs,
+                is_resolved=True,
+                resolved_at=timezone.now(),
+            )
         return
 
     existing_high = existing_qs.order_by("-threshold").first()
@@ -48,7 +53,11 @@ def fish_evaluated_mortality_alert(sender, instance: FishEvaluated, created, **k
         return
 
     if existing_qs.exists():
-        existing_qs.update(is_resolved=True, resolved_at=timezone.now())
+        audit_queryset_update(
+            existing_qs,
+            is_resolved=True,
+            resolved_at=timezone.now(),
+        )
 
     create_alert(
         farm=farm,

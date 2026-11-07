@@ -11,6 +11,7 @@ from django.db.models import Q, QuerySet, Sum
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from apps.core.signals import audit_bulk_create, audit_queryset_update
 from apps.harvest.models import (HarvestClassification,
                                  HarvestClassificationDerivation)
 
@@ -62,7 +63,10 @@ def _recalculate_sale_total(sale: Sale) -> Decimal:
     total = SaleDetail.objects.filter(sale=sale).aggregate(total=Sum("price"))[
         "total"
     ] or Decimal("0")
-    Sale.objects.filter(pk=sale.pk).update(total=total)
+    audit_queryset_update(
+        Sale.objects.filter(pk=sale.pk),
+        total=total,
+    )
     sale.total = total
     return total
 
@@ -426,7 +430,8 @@ def create_full_sale(
 
     sale = Sale.objects.create(**sale_data, created_by=created_by, total=running_total)
 
-    SaleDetail.objects.bulk_create(
+    audit_bulk_create(
+        SaleDetail,
         [
             SaleDetail(
                 farm=item["farm"],

@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.cycle.models import Cycle, CyclePondBatch
+from apps.core.signals import audit_bulk_create
 from apps.farms.models import Farm
 from apps.purchases.models import InventoryMovement
 from apps.purchases.utils import create_out_movement
@@ -451,7 +452,7 @@ def create_feeding_events_for_plan(plan: FeedingPlan) -> int:
 
     if not events:
         return 0
-    FeedingEvent.objects.bulk_create(events)
+    audit_bulk_create(FeedingEvent, events)
     return len(events)
 
 
@@ -597,4 +598,3 @@ def _create_plan_with_events_locked(
     )
     create_feeding_events_for_plan(plan)
     return plan
-
