@@ -2,7 +2,6 @@ from rest_framework.permissions import BasePermission
 
 from apps.accounts.permissions import ROLE_ADMIN
 
-from .enums import FarmPermission, effective_farm_permissions
 from .models import UserFarm
 
 
@@ -83,8 +82,6 @@ class IsFarmOwner(BasePermission):
 
 
 class HasFarmPermission(BasePermission):
-    required_permission: FarmPermission = FarmPermission.MANAGE_REVIEWS
-
     def has_permission(self, request, view):
         farm_pk = _get_farm_pk(view, request)
         if farm_pk is None:
@@ -100,22 +97,9 @@ class HasFarmPermission(BasePermission):
         uf = _get_user_farm(request.user, farm_pk)
         if uf is None:
             return False
-        if uf.is_owner:
-            return True
-        if uf.farm_role and (
-            uf.farm_role.farm_id != uf.farm_id
-            or uf.farm_role.deleted_at is not None
-        ):
-            return False
         from apps.accounts.permissions import AppPermission
 
-        if AppPermission().has_permission(request, view):
-            return True
-        if uf.farm_role_id and uf.farm_role and uf.farm_role.permissions_configured:
-            return False
-
-        effective = effective_farm_permissions(uf)
-        return bool(effective & self.required_permission)
+        return AppPermission().has_permission(request, view)
 
 
 class CanManageFarmUsers(BasePermission):
@@ -136,23 +120,26 @@ class CanManageFarmUsers(BasePermission):
             return False
         if uf.is_owner:
             return True
-        effective = effective_farm_permissions(uf)
-        return bool(
-            effective
-            & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)
-        )
+        from apps.accounts.permissions import AppPermission
+
+        return AppPermission().has_permission(request, view)
 
 
-def make_farm_permission(perm: FarmPermission) -> type:
-    return type(
-        f"Can{perm.name.title().replace('_', '')}",
-        (HasFarmPermission,),
-        {"required_permission": perm},
-    )
+class CanManageReviews(HasFarmPermission):
+    pass
 
 
-CanManageReviews = make_farm_permission(FarmPermission.MANAGE_REVIEWS)
-CanManageInventory = make_farm_permission(FarmPermission.MANAGE_INVENTORY)
-CanManageCycle = make_farm_permission(FarmPermission.MANAGE_CYCLE)
-CanManagePond = make_farm_permission(FarmPermission.MANAGE_POND)
-CanManageFarm = make_farm_permission(FarmPermission.MANAGE_FARM)
+class CanManageInventory(HasFarmPermission):
+    pass
+
+
+class CanManageCycle(HasFarmPermission):
+    pass
+
+
+class CanManagePond(HasFarmPermission):
+    pass
+
+
+class CanManageFarm(HasFarmPermission):
+    pass

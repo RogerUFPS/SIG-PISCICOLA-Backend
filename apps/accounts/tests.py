@@ -55,7 +55,6 @@ class AccountAuthenticationTests(TestCase):
         farm_role = FarmRole.objects.create(
             farm=farm,
             name="Consulta",
-            permissions_configured=True,
         )
         UserFarm.objects.create(
             user=self.user,
@@ -228,10 +227,10 @@ class AccountAuthenticationTests(TestCase):
 
         FarmRoleAppPermission.objects.create(
             role=self.farm_role,
-            app="species",
+            module="species_catalog",
             can_view=True,
             can_create=False,
-            can_edit=True,
+            can_update=True,
             can_delete=False,
         )
         self.assertTrue(AppPermission().has_permission(request, view))
@@ -240,7 +239,7 @@ class AccountAuthenticationTests(TestCase):
         self.assertFalse(AppPermission().has_permission(request, view))
 
         FarmRoleAppPermission.objects.filter(
-            role=self.farm_role, app="species"
+            role=self.farm_role, module="species_catalog"
         ).update(
             can_create=True
         )
@@ -259,7 +258,6 @@ class AccountAuthenticationTests(TestCase):
         other_role = FarmRole.objects.create(
             farm=other_farm,
             name="Sin permisos de especies",
-            permissions_configured=True,
         )
         UserFarm.objects.create(
             user=self.user,
@@ -268,7 +266,7 @@ class AccountAuthenticationTests(TestCase):
         )
         FarmRoleAppPermission.objects.create(
             role=self.farm_role,
-            app="species",
+            module="species_catalog",
             can_view=True,
         )
         request = APIRequestFactory().get("/api/species/")

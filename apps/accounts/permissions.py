@@ -43,56 +43,38 @@ class CompletionPermission(BasePermission):
         return AppPermission().has_permission(request, view)
 
 
-LEGACY_PERMISSIONS_BY_APP = None
 ACTION_BY_METHOD = {
     "GET": "can_view",
     "HEAD": "can_view",
     "OPTIONS": "can_view",
     "POST": "can_create",
-    "PUT": "can_edit",
-    "PATCH": "can_edit",
+    "PUT": "can_update",
+    "PATCH": "can_update",
     "DELETE": "can_delete",
 }
 ACTION_BY_VIEW = {
     "list": "can_view",
     "retrieve": "can_view",
     "create": "can_create",
-    "update": "can_edit",
-    "partial_update": "can_edit",
+    "update": "can_update",
+    "partial_update": "can_update",
     "destroy": "can_delete",
 }
 
 
-def _legacy_permissions_by_app():
-    global LEGACY_PERMISSIONS_BY_APP
-    if LEGACY_PERMISSIONS_BY_APP is None:
-        from apps.farms.enums import FarmPermission
-
-        LEGACY_PERMISSIONS_BY_APP = {
-            "batch": FarmPermission.MANAGE_CYCLE,
-            "cycle": FarmPermission.MANAGE_CYCLE,
-            "events": FarmPermission.MANAGE_CYCLE,
-            "feeding": FarmPermission.MANAGE_CYCLE,
-            "harvest": FarmPermission.MANAGE_CYCLE,
-            "health": FarmPermission.MANAGE_REVIEWS,
-            "monitoring": FarmPermission.MANAGE_REVIEWS,
-            "ponds": FarmPermission.MANAGE_POND,
-            "products": FarmPermission.MANAGE_INVENTORY,
-            "purchases": FarmPermission.MANAGE_INVENTORY,
-            "sales": FarmPermission.MANAGE_INVENTORY,
-            "farms": FarmPermission.MANAGE_FARM,
-        }
-    return LEGACY_PERMISSIONS_BY_APP
-
-
-def _permission_app(view):
+def _permission_module(view):
+    module = getattr(view, "permission_module", None)
+    if module is not None:
+        return module
     app = getattr(view, "permission_app", None)
-    if app is not None:
-        return app
     app_parts = view.__class__.__module__.split(".")
-    if len(app_parts) < 3 or app_parts[0] != "apps":
-        return None
-    return app_parts[1]
+    if app is None:
+        if len(app_parts) < 3 or app_parts[0] != "apps":
+            return None
+        app = app_parts[1]
+    from apps.farms.modules import APP_TO_MODULE
+
+    return APP_TO_MODULE.get(app)
 
 
 def _permission_action(request, view):
@@ -104,20 +86,14 @@ def _permission_action(request, view):
 
 
 def _grant_allows(grant, action):
-    return bool(grant and grant.can_view and getattr(grant, action, False))
+    return bool(grant and getattr(grant, action, False))
 
 
-def _membership_allows_app(membership, view, app, action):
-    from apps.farms.enums import FarmPermission, effective_farm_permissions
+def _membership_allows_module(membership, module, action):
     from apps.farms.models import FarmRoleAppPermission
 
     if membership.is_owner:
         return True
-    if app == "farm_users" or getattr(view, "permission_app", None) == "farm_users":
-        return bool(
-            effective_farm_permissions(membership)
-            & (FarmPermission.MANAGE_USERS | FarmPermission.MANAGE_FARM)
-        )
     farm_role = getattr(membership, "farm_role", None)
     if membership.farm_role_id is not None and (
         farm_role is None
@@ -125,26 +101,16 @@ def _membership_allows_app(membership, view, app, action):
         or farm_role.farm_id != membership.farm_id
     ):
         return False
-    if app == "farms" and action == "can_view":
+    role_grant = FarmRoleAppPermission.objects.filter(
+        role_id=membership.farm_role_id,
+        module=module,
+    ).first()
+    if _grant_allows(role_grant, action):
         return True
-
-    grant = None
-    if membership.farm_role_id is not None:
-        grant = FarmRoleAppPermission.objects.filter(
-            role_id=membership.farm_role_id,
-            app=app,
-        ).first()
-
-    if farm_role is not None and farm_role.permissions_configured:
-        return _grant_allows(grant, action)
-
-    legacy_permission = _legacy_permissions_by_app().get(app)
-    if (
-        legacy_permission is not None
-        and effective_farm_permissions(membership) & legacy_permission
-    ):
-        return True
-    return _grant_allows(grant, action)
+    return membership.personal_permissions.filter(
+        module=module,
+        operation=action.removeprefix("can_"),
+    ).exists()
 
 
 class AppPermission(BasePermission):
@@ -160,9 +126,9 @@ class AppPermission(BasePermission):
         from apps.farms.permissions import _get_farm_pk
 
         farm_id = _get_farm_pk(view, request)
-        app = _permission_app(view)
+        module = _permission_module(view)
         action = _permission_action(request, view)
-        if action is None or app is None:
+        if action is None or module is None:
             return False
 
         from apps.farms.models import UserFarm
@@ -182,14 +148,10 @@ class AppPermission(BasePermission):
         if farm_id is not None:
             if not memberships:
                 return False
-            return _membership_allows_app(memberships[0], view, app, action)
+            return _membership_allows_module(memberships[0], module, action)
 
-        if action == "can_view":
-            return True
-        if view.__class__.__module__.startswith("apps.accounts."):
-            return True
         return any(
-            _membership_allows_app(membership, view, app, action)
+            _membership_allows_module(membership, module, action)
             for membership in memberships
         )
 

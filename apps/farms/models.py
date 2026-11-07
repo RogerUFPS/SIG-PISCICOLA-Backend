@@ -75,8 +75,6 @@ class Farm(models.Model):
 class FarmRole(models.Model):
     farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name="roles")
     name = models.CharField(max_length=100)
-    permissions = models.PositiveSmallIntegerField(default=0)
-    permissions_configured = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -90,20 +88,20 @@ class FarmRoleAppPermission(models.Model):
     role = models.ForeignKey(
         FarmRole,
         on_delete=models.CASCADE,
-        related_name="app_permissions",
+        related_name="module_permissions",
     )
-    app = models.CharField(max_length=50)
+    module = models.CharField(max_length=50)
     can_view = models.BooleanField(default=False)
     can_create = models.BooleanField(default=False)
-    can_edit = models.BooleanField(default=False)
+    can_update = models.BooleanField(default=False)
     can_delete = models.BooleanField(default=False)
 
     class Meta:
         db_table = "farm_role_app_permission"
         constraints = [
             models.UniqueConstraint(
-                fields=["role", "app"],
-                name="unique_farm_role_app_permission",
+                fields=["role", "module"],
+                name="unique_farm_role_module_permission",
             ),
         ]
 
@@ -124,7 +122,6 @@ class UserFarm(models.Model):
         blank=True,
         related_name="user_farms",
     )
-    permissions = models.PositiveSmallIntegerField(default=0)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.ACTIVE
     )
@@ -142,3 +139,28 @@ class UserFarm(models.Model):
 
     def __str__(self):
         return f"{self.user} @ {self.farm}"
+
+
+class UserFarmPermission(models.Model):
+    class Operation(models.TextChoices):
+        VIEW = "view", "View"
+        CREATE = "create", "Create"
+        UPDATE = "update", "Update"
+        DELETE = "delete", "Delete"
+
+    user_farm = models.ForeignKey(
+        UserFarm,
+        on_delete=models.CASCADE,
+        related_name="personal_permissions",
+    )
+    module = models.CharField(max_length=50)
+    operation = models.CharField(max_length=10, choices=Operation.choices)
+
+    class Meta:
+        db_table = "user_farm_permission"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user_farm", "module", "operation"],
+                name="unique_user_farm_module_operation",
+            ),
+        ]
