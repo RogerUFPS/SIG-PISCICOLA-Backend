@@ -5,6 +5,17 @@ Los roles que se configuran en esta sección son perfiles de trabajo locales a
 una granja; no crean nuevos tipos globales de usuario. El productor propietario
 administra los roles y asigna cada rol a los operarios de esa granja.
 
+## Sesiones de cuenta
+
+Cada cuenta puede tener una sola sesión activa. Tras 15 minutos sin actividad,
+la sesión vence. Cada solicitud autenticada y cada renovación de token reinicia
+el temporizador de inactividad; no hay una duración máxima absoluta. Los
+tokens no imponen un límite menor: su validez queda subordinada a la sesión
+activa del servidor. Un inicio de sesión con credenciales correctas revoca la
+sesión anterior e inicia una nueva; credenciales incorrectas no afectan a la
+sesión actual. Las sesiones que ya estaban activas se revocan al aplicar la
+migración `accounts.0007`.
+
 ### `GET /api/farms/<farm_id>/roles/apps/`
 
 Lista las aplicaciones disponibles para configurar permisos de la finca,
@@ -197,4 +208,3 @@ operario se aplican así:
 
 Los permisos propios del recurso —por ejemplo, que un operario tenga asignado
 un estanque— se siguen comprobando además del rol de la granja.
-

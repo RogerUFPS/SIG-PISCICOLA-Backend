@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from apps.accounts.permissions import AdminOr, AppPermission, IsProductor
+from apps.core.signals import audit_queryset_update
 
 from .enums import FarmPermission
 from .models import City, Department, Farm, FarmRole, UserFarm
@@ -164,7 +165,11 @@ class FarmRoleViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         role = self.get_object()
-        role.user_farms.update(farm_role=None, permissions=0)
+        audit_queryset_update(
+            role.user_farms.all(),
+            farm_role=None,
+            permissions=0,
+        )
         role.deleted_at = timezone.now()
         role.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)

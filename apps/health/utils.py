@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.cycle.models import Cycle, CyclePondBatch
+from apps.core.signals import audit_bulk_create, audit_queryset_update
 from apps.farms.models import Farm
 from apps.feeding.utils import quantity_in_product_unit
 from apps.monitoring.models import ControlStat, FishEvaluated
@@ -319,12 +320,15 @@ def _prepare_control_stat_slot(*, cycle, pond, eval_date) -> None:
     FishEvaluatedSerializer (monitoring) hace update_or_create de ControlStat.
     Si el del día está archivado (soft-delete), reactivarlo antes del save.
     """
-    ControlStat.objects.filter(
-        cycle=cycle,
-        pond=pond,
-        control_date=eval_date,
-        deleted_at__isnull=False,
-    ).update(deleted_at=None)
+    audit_queryset_update(
+        ControlStat.objects.filter(
+            cycle=cycle,
+            pond=pond,
+            control_date=eval_date,
+            deleted_at__isnull=False,
+        ),
+        deleted_at=None,
+    )
 
 
 def create_health_stat_with_fish_evaluation(
@@ -613,7 +617,7 @@ def create_treatment_events_for_plan(plan: TreatmentPlan) -> int:
 
     if not events:
         return 0
-    TreatmentEvent.objects.bulk_create(events)
+    audit_bulk_create(TreatmentEvent, events)
     return len(events)
 
 

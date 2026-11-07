@@ -28,7 +28,6 @@ class SessionJWTAuthentication(JWTAuthentication):
             pk=session_id,
             user=user,
             revoked_at__isnull=True,
-            expires_at__gt=now,
         ).first()
         if session is None:
             raise AuthenticationFailed("La sesión es inválida o ha vencido.")
@@ -38,7 +37,8 @@ class SessionJWTAuthentication(JWTAuthentication):
             raise AuthenticationFailed("La sesión venció por inactividad.")
 
         session.last_activity = now
-        session.save(update_fields=["last_activity"])
+        session.expires_at = now + settings.JWT_IDLE_TIMEOUT
+        session.save(update_fields=["last_activity", "expires_at"])
         return user, token
 
 
@@ -70,11 +70,10 @@ class SessionTokenRefreshSerializer(TokenRefreshSerializer):
                 {"refresh": "La sesión es inválida o ha vencido."}
             ) from exc
 
-        if session.expires_at <= now:
-            raise serializers.ValidationError(
-                {"refresh": "La sesión alcanzó su duración máxima."}
-            )
-        if now - session.last_activity >= settings.JWT_IDLE_TIMEOUT:
+        if (
+            session.expires_at <= now
+            or now - session.last_activity >= settings.JWT_IDLE_TIMEOUT
+        ):
             session.revoked_at = now
             session.save(update_fields=["revoked_at"])
             raise serializers.ValidationError(
@@ -82,5 +81,6 @@ class SessionTokenRefreshSerializer(TokenRefreshSerializer):
             )
 
         session.last_activity = now
-        session.save(update_fields=["last_activity"])
+        session.expires_at = now + settings.JWT_IDLE_TIMEOUT
+        session.save(update_fields=["last_activity", "expires_at"])
         return super().validate(attrs)

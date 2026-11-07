@@ -67,7 +67,11 @@ actualización, resolución ni eliminación.
 
 ### `GET /api/farms/core/<farm_id>/auditlogs/`
 
-Lista los registros de auditoría de la finca indicada.
+Lista los registros de auditoría de la finca indicada. Requiere acceso a la
+finca y permiso de lectura `core_auditlogs`; cada respuesta contiene como
+máximo 50 registros y usa paginación (`count`, `next`, `previous`, `results`).
+La página se solicita con `?page=<n>`; no existe una opción para desactivar la
+paginación ni aumentar el tamaño de página.
 
 ### `GET /api/farms/core/<farm_id>/auditlogs/<id>/`
 
@@ -86,7 +90,8 @@ Obtiene un registro de auditoría de esa finca. Cada elemento contiene:
 | `new_values` | object o `null` | Valores nuevos, si están disponibles. |
 | `created_at` | fecha/hora | Fecha de creación. |
 
-`type_source` puede ser: `User`, `UserFarm`, `Farm`, `FarmRole`, `Pond`,
+`type_source` puede ser: `User`, `UserFarm`, `Farm`, `FarmRole`,
+`FarmRoleAppPermission`, `Pond`,
 `UserFarmPond`, `TypeProduct`, `Product`, `PurchaseDetail`, `Supplier`,
 `Specie`, `SpecieParameter`, `SpecieFeedingReference`,
 `SpecieProductionReference`, `Batch`, `ProductionPlan`, `Cycle`,
@@ -97,5 +102,8 @@ Obtiene un registro de auditoría de esa finca. Cada elemento contiene:
 `Invitation`, `BatchTransfer`, `GradingEvent`, `SaleDetail`,
 `CyclePondBatch`, `PondBatch`, `SpeciePondType` o `ProductionReport`.
 
-AuditLog solo permite `GET` de lista y detalle; no acepta creación,
-actualización ni eliminación.
+Los cambios registrados en entidades de una finca generan entradas de
+auditoría con usuario e IP cuando están disponibles, valores anteriores y
+nuevos, y fecha. Los registros de una finca nunca incluyen los de otra. Los
+registros son inmutables: solo permiten `GET` de lista y detalle; no aceptan
+creación desde la API, actualización ni eliminación.

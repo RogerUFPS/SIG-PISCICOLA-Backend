@@ -2,6 +2,8 @@ from datetime import date, timedelta
 
 from django.db import transaction
 from django.utils import timezone
+
+from apps.core.signals import audit_queryset_update
 from rest_framework import serializers
 
 from apps.batch.models import Batch, PondBatch
@@ -382,11 +384,12 @@ class FishEvaluatedSerializer(serializers.ModelSerializer):
         )
         deleted_at = timezone.now()
         if latest_by_date:
-            control_stats.exclude(
-                control_date__in=latest_by_date
-            ).update(deleted_at=deleted_at)
+            audit_queryset_update(
+                control_stats.exclude(control_date__in=latest_by_date),
+                deleted_at=deleted_at,
+            )
         else:
-            control_stats.update(deleted_at=deleted_at)
+            audit_queryset_update(control_stats, deleted_at=deleted_at)
 
         for evaluation in latest_by_date.values():
             self._refresh_cycle_control_stat(evaluation, ignore_same_day=True)

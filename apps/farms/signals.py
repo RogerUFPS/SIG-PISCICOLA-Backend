@@ -30,7 +30,10 @@ DEFAULT_ROLES = [
 def create_default_roles(sender, instance, created, **kwargs):
     if not created:
         return
-    FarmRole.objects.bulk_create(
+    from apps.core.signals import audit_bulk_create
+
+    audit_bulk_create(
+        FarmRole,
         [
             FarmRole(farm=instance, name=role["name"], permissions=role["permissions"])
             for role in DEFAULT_ROLES

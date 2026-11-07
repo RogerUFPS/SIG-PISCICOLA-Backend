@@ -5,6 +5,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.accounts.views import get_tokens_for_user
+from apps.core.models import AuditLog
 
 from .enums import FarmPermission
 from .models import City, Department, Farm, FarmRole, FarmRoleAppPermission, UserFarm
@@ -42,6 +43,8 @@ class FarmRolePermissionsTests(TestCase):
         )
         UserFarm.objects.create(user=self.operator, farm=self.farm)
         tokens = get_tokens_for_user(self.producer)
+        self.producer_tokens = tokens
+        self.operator_tokens = get_tokens_for_user(self.operator)
         self.client = APIClient()
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
 
@@ -80,6 +83,12 @@ class FarmRolePermissionsTests(TestCase):
         self.assertTrue(grant.can_create)
         self.assertTrue(grant.can_edit)
         self.assertFalse(grant.can_delete)
+        permission_log = AuditLog.objects.get(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.FARM_ROLE_APP_PERMISSION,
+            source_id=grant.pk,
+        )
+        self.assertEqual(permission_log.user, self.producer)
 
     def test_core_permissions_cannot_be_configured_for_writes(self):
         response = self.client.post(
@@ -160,7 +169,7 @@ class FarmRolePermissionsTests(TestCase):
             permissions=0,
         )
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         self.assertEqual(
@@ -185,7 +194,7 @@ class FarmRolePermissionsTests(TestCase):
             permissions=0,
         )
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         self.assertEqual(
@@ -210,7 +219,7 @@ class FarmRolePermissionsTests(TestCase):
             permissions=0,
         )
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         for path in ("roles/", "roles/apps/", "members/"):
@@ -231,7 +240,7 @@ class FarmRolePermissionsTests(TestCase):
             permissions=int(FarmPermission.MANAGE_USERS),
         )
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         self.assertEqual(
@@ -285,7 +294,7 @@ class FarmRolePermissionsTests(TestCase):
         self.assertEqual(membership.permissions, 0)
 
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
         self.assertEqual(
             self.client.get(f"/api/farms/{self.farm.pk}/members/").status_code,
@@ -300,7 +309,7 @@ class FarmRolePermissionsTests(TestCase):
         manager_membership.permissions = int(FarmPermission.MANAGE_USERS)
         manager_membership.save(update_fields=["permissions"])
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         response = self.client.patch(
@@ -323,7 +332,7 @@ class FarmRolePermissionsTests(TestCase):
         membership.permissions = int(FarmPermission.MANAGE_USERS)
         membership.save(update_fields=["permissions"])
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         response = self.client.post(
@@ -362,7 +371,7 @@ class FarmRolePermissionsTests(TestCase):
         membership.permissions = int(FarmPermission.MANAGE_USERS)
         membership.save(update_fields=["permissions"])
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
 
         response = self.client.post(
@@ -385,7 +394,7 @@ class FarmRolePermissionsTests(TestCase):
             format="json",
         )
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
         self.assertEqual(
             self.client.get(f"/api/farms/{self.farm.pk}/roles/apps/").status_code,
@@ -393,7 +402,7 @@ class FarmRolePermissionsTests(TestCase):
         )
 
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.producer)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.producer_tokens['access']}"
         )
         response = self.client.patch(
             f"/api/farms/{self.farm.pk}/roles/{role.pk}/",
@@ -402,7 +411,7 @@ class FarmRolePermissionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {get_tokens_for_user(self.operator)['access']}"
+            HTTP_AUTHORIZATION=f"Bearer {self.operator_tokens['access']}"
         )
         self.assertEqual(
             self.client.get(f"/api/farms/{self.farm.pk}/roles/apps/").status_code,

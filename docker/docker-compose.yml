@@ -1,44 +1,11 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: sig_piscicola
-      POSTGRES_USER: sig_piscicola
-      POSTGRES_PASSWORD: sig_piscicola_dev
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sig_piscicola -d sig_piscicola"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   web:
     build:
       context: ../
       dockerfile: docker/Dockerfile
     restart: unless-stopped
-    environment:
-      SECRET_KEY: django-insecure-docker-development
-      DEBUG: "True"
-      ALLOWED_HOSTS: localhost,127.0.0.1
-      CORS_ALLOW_ALL_ORIGINS: "True"
-      DATABASE_NAME: sig_piscicola
-      DATABASE_USER: sig_piscicola
-      DATABASE_PASSWORD: sig_piscicola_dev
-      DATABASE_HOST: db
-      DATABASE_PORT: "5432"
-      DATABASE_SSLMODE: disable
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
       - "8001:8000"
     volumes:
       - ../:/app
 
-volumes:
-  postgres_data:

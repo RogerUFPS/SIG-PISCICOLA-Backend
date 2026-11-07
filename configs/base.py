@@ -1,14 +1,16 @@
-import os
 from datetime import timedelta
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = os.getenv("SECRET_KEY")
-DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+SECRET_KEY = "django-insecure-base-settings-only"
+DEBUG = False
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -51,6 +53,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "apps.accounts.middleware.ForceTempPasswordChangeMiddleware",
+    "apps.core.middleware.AuditContextMiddleware",
 ]
 
 REST_FRAMEWORK = {
@@ -90,16 +93,12 @@ AUTHENTICATION_BACKENDS = [
     "apps.accounts.backends.LockableModelBackend",
 ]
 
-JWT_IDLE_TIMEOUT = timedelta(
-    minutes=int(os.getenv("JWT_IDLE_TIMEOUT_MINUTES", "15"))
-)
-JWT_SESSION_ABSOLUTE_LIFETIME = timedelta(
-    days=int(os.getenv("JWT_SESSION_ABSOLUTE_LIFETIME_DAYS", "7"))
-)
+JWT_IDLE_TIMEOUT = timedelta(minutes=15)
+JWT_TOKEN_LIFETIME = timedelta(days=36500)
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": JWT_SESSION_ABSOLUTE_LIFETIME,
-    "REFRESH_TOKEN_LIFETIME": JWT_SESSION_ABSOLUTE_LIFETIME,
+    "ACCESS_TOKEN_LIFETIME": JWT_TOKEN_LIFETIME,
+    "REFRESH_TOKEN_LIFETIME": JWT_TOKEN_LIFETIME,
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
@@ -107,6 +106,10 @@ SIMPLE_JWT = {
 ROOT_URLCONF = "project.urls"
 WSGI_APPLICATION = "project.wsgi.application"
 STATIC_URL = "/static/"
+HOST_URL = "http://localhost:3000"
+DEFAULT_FROM_EMAIL = "noreply@correspondencia-ufps.me"
+RESEND_API_KEY = None
+CORS_ALLOW_ALL_ORIGINS = False
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"

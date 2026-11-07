@@ -1,5 +1,17 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class ImmutableAuditLogQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Audit logs are immutable.")
+
+    def delete(self):
+        raise ValidationError("Audit logs are immutable.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Audit logs are immutable.")
 
 
 class Unit(models.Model):
@@ -22,6 +34,10 @@ class AuditLog(models.Model):
         USER_FARM = "UserFarm", "UserFarm"
         FARM = "Farm", "Farm"
         FARM_ROLE = "FarmRole", "FarmRole"
+        FARM_ROLE_APP_PERMISSION = (
+            "FarmRoleAppPermission",
+            "FarmRoleAppPermission",
+        )
         POND = "Pond", "Pond"
         USER_FARM_POND = "UserFarmPond", "UserFarmPond"
         TYPE_PRODUCT = "TypeProduct", "TypeProduct"
@@ -95,6 +111,16 @@ class AuditLog(models.Model):
             models.Index(fields=["type_source"]),
             models.Index(fields=["created_at"]),
         ]
+
+    objects = ImmutableAuditLogQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Audit logs are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Audit logs are immutable.")
 
     def __str__(self):
         return f"[{self.type_source}] {self.description} - {self.created_at}"

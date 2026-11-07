@@ -1,5 +1,6 @@
 from rest_framework import viewsets
 from rest_framework import mixins
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 
 from ..accounts.permissions import AdminOr
@@ -14,10 +15,15 @@ class UnitView(viewsets.ReadOnlyModelViewSet):
     serializer_class = UnitSerializer
 
 
+class AuditLogPagination(PageNumberPagination):
+    page_size = 50
+
+
 class AuditLogView(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AdminOr(IsFarmMember)]
     serializer_class = AuditLogSerializer
     permission_app = "core_auditlogs"
+    pagination_class = AuditLogPagination
 
     def get_queryset(self):
         return AuditLog.objects.filter(farm_id=self.kwargs["farm_pk"])

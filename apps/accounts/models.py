@@ -4,6 +4,7 @@ import uuid
 from django.contrib.auth.models import (AbstractBaseUser, BaseUserManager,
                                         PermissionsMixin)
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -32,6 +33,13 @@ class UserSession(models.Model):
 
     class Meta:
         db_table = "user_session"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=Q(revoked_at__isnull=True),
+                name="unique_active_user_session",
+            ),
+        ]
         indexes = [
             models.Index(fields=["user", "revoked_at"]),
             models.Index(fields=["expires_at"]),
