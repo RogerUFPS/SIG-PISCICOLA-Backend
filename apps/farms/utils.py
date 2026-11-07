@@ -1,42 +1,38 @@
-from apps.accounts.permissions import ROLE_ADMIN
-
-from .enums import (
-    FarmPermission,
-    effective_farm_permissions,
-    expand_permissions,
-)
-from .models import FarmRole, UserFarm
-from .permissions import _get_user_farm
+from .models import FarmRole, FarmRoleAppPermission, UserFarm
 
 
-def user_has_farm_permission(user, farm_id: int, permission: FarmPermission) -> bool:
-    role = getattr(user, "role", None)
-    if role is None or not user.is_authenticated:
-        return False
-    if role.name == ROLE_ADMIN:
-        return True
-    uf = _get_user_farm(user, farm_id)
-    if uf is None:
-        return False
-    if uf.is_owner:
-        return True
-    return bool(effective_farm_permissions(uf) & permission)
+def get_effective_permissions(user_farm: UserFarm) -> list[dict[str, str]]:
+    from .modules import MODULES, OPERATIONS
 
-
-def get_effective_permissions(user_farm: UserFarm) -> int:
-    return effective_farm_permissions(user_farm)
-
-
-def assign_operario_permissions(user_farm: UserFarm, permissions: list[str]) -> None:
-    result = 0
-    for name in permissions:
-        try:
-            perm = FarmPermission[name]
-        except KeyError:
-            raise ValueError(f"Permiso inválido: '{name}'.")
-        result |= perm
-    user_farm.permissions = int(result)
-    user_farm.save(update_fields=["permissions"])
+    if user_farm.is_owner:
+        return [
+            {"module": module, "operation": operation}
+            for module in sorted(MODULES)
+            for operation in OPERATIONS
+            if module not in ("alerts", "audit_logs") or operation == "view"
+        ]
+    grants = set(
+        user_farm.personal_permissions.values_list("module", "operation")
+    )
+    role = user_farm.farm_role
+    if (
+        role is not None
+        and role.deleted_at is None
+        and role.farm_id == user_farm.farm_id
+    ):
+        for permission in FarmRoleAppPermission.objects.filter(role=role):
+            for operation, enabled in (
+                ("view", permission.can_view),
+                ("create", permission.can_create),
+                ("update", permission.can_update),
+                ("delete", permission.can_delete),
+            ):
+                if enabled:
+                    grants.add((permission.module, operation))
+    return [
+        {"module": module, "operation": operation}
+        for module, operation in sorted(grants)
+    ]
 
 
 def assign_role_to_operario(user_farm: UserFarm, role: FarmRole) -> None:
@@ -44,10 +40,7 @@ def assign_role_to_operario(user_farm: UserFarm, role: FarmRole) -> None:
         raise ValueError("El rol no pertenece a esta finca.")
 
     user_farm.farm_role = role
-    user_farm.permissions = (
-        0 if role.permissions_configured else int(role.permissions)
-    )
-    user_farm.save(update_fields=["farm_role", "permissions"])
+    user_farm.save(update_fields=["farm_role"])
 
 
 def farm_has_active_resources(farm) -> bool:

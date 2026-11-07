@@ -2,8 +2,8 @@
 
 Todas las rutas están bajo `/api`. Las rutas de Alertas y AuditLog requieren el
 identificador de la finca en la URL; el permiso de lectura de cada recurso se
-otorga por separado en `app_permissions` del rol de finca: `core_alerts` o
-`core_auditlogs`.
+otorga por separado en `module_permissions` del rol de finca: `alerts` o
+`audit_logs`. Consulta la [guía de permisos para frontend](./frontend-permissions-guide.md).
 
 ## Unidades
 
@@ -68,7 +68,7 @@ actualización, resolución ni eliminación.
 ### `GET /api/farms/core/<farm_id>/auditlogs/`
 
 Lista los registros de auditoría de la finca indicada. Requiere acceso a la
-finca y permiso de lectura `core_auditlogs`; cada respuesta contiene como
+finca y permiso `audit_logs.view`; cada respuesta contiene como
 máximo 50 registros y usa paginación (`count`, `next`, `previous`, `results`).
 La página se solicita con `?page=<n>`; no existe una opción para desactivar la
 paginación ni aumentar el tamaño de página.

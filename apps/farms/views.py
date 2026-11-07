@@ -5,18 +5,17 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from apps.accounts.permissions import AdminOr, AppPermission, IsProductor
+from apps.accounts.permissions import AdminOr, IsProductor
 from apps.core.signals import audit_queryset_update
 
-from .enums import FarmPermission
-from .models import City, Department, Farm, FarmRole, UserFarm
+from .models import City, Department, Farm, FarmRole, UserFarm, UserFarmPermission
 from .permissions import (CanManageFarm, CanManageFarmUsers, IsFarmMember,
                           IsFarmOwner, user_may_access_farm)
 from .serializers import (CitySerializer, DepartmentSerializer,
                           FarmRoleSerializer, FarmSerializer,
-                          UserFarmSerializer, get_role_permission_apps)
+                          UserFarmPermissionSerializer, UserFarmSerializer,
+                          get_role_permission_modules)
 from .utils import (
-    assign_operario_permissions,
     assign_role_to_operario,
     farm_has_active_resources,
 )
@@ -24,13 +23,13 @@ from .utils import (
 
 class DepartmentListView(generics.ListAPIView):
     serializer_class = DepartmentSerializer
-    permission_classes = [AllowAny, AppPermission]
+    permission_classes = [AllowAny]
     queryset = Department.objects.order_by("name")
 
 
 class CityListView(generics.ListAPIView):
     serializer_class = CitySerializer
-    permission_classes = [AllowAny, AppPermission]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         qs = City.objects.select_related("department").order_by("name")
@@ -85,7 +84,6 @@ class FarmViewSet(viewsets.ModelViewSet):
         UserFarm.objects.create(
             user=owner,
             farm=farm,
-            permissions=int(FarmPermission.ALL),
             is_owner=True,
             status=UserFarm.Status.ACTIVE,
         )
@@ -145,17 +143,17 @@ class FarmRoleViewSet(viewsets.ModelViewSet):
             farm_id=farm_pk,
             farm__deleted_at__isnull=True,
             deleted_at__isnull=True,
-        ).prefetch_related("app_permissions")
+        ).prefetch_related("module_permissions")
         if not user_may_access_farm(self.request.user, farm_pk):
             return qs.none()
         return qs.order_by("name")
 
-    @action(detail=False, methods=["get"], url_path="apps")
-    def apps(self, request, farm_pk=None):
+    @action(detail=False, methods=["get"], url_path="modules")
+    def modules(self, request, farm_pk=None):
         return Response(
             [
-                {"app": app, "name": name}
-                for app, name in sorted(get_role_permission_apps().items())
+                {"module": module, "name": name}
+                for module, name in sorted(get_role_permission_modules().items())
             ]
         )
 
@@ -168,7 +166,6 @@ class FarmRoleViewSet(viewsets.ModelViewSet):
         audit_queryset_update(
             role.user_farms.all(),
             farm_role=None,
-            permissions=0,
         )
         role.deleted_at = timezone.now()
         role.save(update_fields=["deleted_at"])
@@ -205,6 +202,20 @@ class UserFarmViewSet(
         return qs.select_related("user", "farm_role").order_by("user__id")
 
     def update(self, request, *args, **kwargs):
+        if {
+            "permissions",
+            "personal_permissions",
+            "effective_permissions",
+        } & request.data.keys():
+            return Response(
+                {
+                    "detail": (
+                        "Usa el endpoint personal-permissions para asignar o "
+                        "retirar una sola operación."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         member = self.get_object()
         if member.is_owner:
             return Response(
@@ -219,14 +230,11 @@ class UserFarmViewSet(
         actor_is_admin = getattr(
             getattr(request.user, "role", None), "name", None
         ) == "Admin"
-        if not actor_is_owner and not actor_is_admin and any(
-            field in request.data for field in ("permissions", "farm_role")
-        ):
+        if not actor_is_owner and not actor_is_admin and "farm_role" in request.data:
             return Response(
                 {
                     "detail": (
-                        "Solo el propietario puede asignar permisos o roles "
-                        "de finca."
+                        "Solo el propietario puede asignar roles de finca."
                     )
                 },
                 status=status.HTTP_403_FORBIDDEN,
@@ -257,15 +265,60 @@ class UserFarmViewSet(
                             {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
                         )
 
-            if "permissions" in request.data:
-                try:
-                    assign_operario_permissions(member, request.data["permissions"])
-                except ValueError as e:
-                    return Response(
-                        {"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST
-                    )
-
         return super().update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="personal-permissions")
+    def personal_permissions(self, request, farm_pk=None, user_id=None):
+        member = self.get_object()
+        if not self._may_assign_permissions(request, member):
+            return Response(
+                {"detail": "Solo el propietario puede administrar estos permisos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = UserFarmPermissionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        permission, created = UserFarmPermission.objects.get_or_create(
+            user_farm=member,
+            **serializer.validated_data,
+        )
+        return Response(
+            UserFarmPermissionSerializer(permission).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"personal-permissions/(?P<permission_id>[0-9]+)",
+    )
+    def remove_personal_permission(
+        self, request, farm_pk=None, user_id=None, permission_id=None
+    ):
+        member = self.get_object()
+        if not self._may_assign_permissions(request, member):
+            return Response(
+                {"detail": "Solo el propietario puede administrar estos permisos."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        permission = UserFarmPermission.objects.filter(
+            pk=permission_id,
+            user_farm=member,
+        ).first()
+        if permission is None:
+            return Response(
+                {"detail": "El permiso personalizado no existe."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        permission.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @staticmethod
+    def _may_assign_permissions(request, member):
+        return request.user.role.name == "Admin" or UserFarm.objects.filter(
+            user=request.user,
+            farm_id=member.farm_id,
+            is_owner=True,
+        ).exists()
 
     def destroy(self, request, *args, **kwargs):
         member = self.get_object()

@@ -40,7 +40,6 @@ class CoreAccessTests(TestCase):
         role = FarmRole.objects.create(
             farm=self.farm,
             name="Core reader",
-            permissions_configured=True,
         )
         UserFarm.objects.create(user=self.operator, farm=self.farm, farm_role=role)
         self.role = role
@@ -65,7 +64,7 @@ class CoreAccessTests(TestCase):
         )
         FarmRoleAppPermission.objects.create(
             role=self.role,
-            app="core_alerts",
+            module="alerts",
             can_view=True,
         )
 
@@ -76,7 +75,7 @@ class CoreAccessTests(TestCase):
 
         FarmRoleAppPermission.objects.create(
             role=self.role,
-            app="core_auditlogs",
+            module="audit_logs",
             can_view=True,
         )
         other_farm = Farm.objects.create(
@@ -114,12 +113,12 @@ class CoreAccessTests(TestCase):
         )
         FarmRoleAppPermission.objects.create(
             role=self.role,
-            app="core_alerts",
+            module="alerts",
             can_view=True,
         )
         FarmRoleAppPermission.objects.create(
             role=self.role,
-            app="core_auditlogs",
+            module="audit_logs",
             can_view=True,
         )
 
@@ -218,7 +217,7 @@ class CoreAccessTests(TestCase):
     def test_audit_logs_are_always_paginated(self):
         FarmRoleAppPermission.objects.create(
             role=self.role,
-            app="core_auditlogs",
+            module="audit_logs",
             can_view=True,
         )
         AuditLog.objects.bulk_create(
@@ -245,11 +244,14 @@ class CoreAccessTests(TestCase):
         self.assertIsNone(second_page.data["next"])
 
     @patch("apps.core.utils.ensure_overdue_events_alerts")
-    def test_legacy_manage_farm_does_not_combine_core_read_permissions(
+    def test_unrelated_role_grant_does_not_grant_core_read_permissions(
         self, _ensure_alerts
     ):
-        self.role.permissions = 63
-        self.role.save(update_fields=["permissions"])
+        FarmRoleAppPermission.objects.create(
+            role=self.role,
+            module="farm_management",
+            can_view=True,
+        )
         alerts_url = f"/api/farms/core/{self.farm.pk}/alerts/"
         logs_url = f"/api/farms/core/{self.farm.pk}/auditlogs/"
 

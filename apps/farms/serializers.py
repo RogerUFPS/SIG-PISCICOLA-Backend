@@ -4,8 +4,16 @@ from rest_framework import serializers
 
 from apps.core.signals import audit_bulk_create, audit_queryset_update
 
-from .enums import FarmPermission
-from .models import City, Department, Farm, FarmRole, FarmRoleAppPermission, UserFarm
+from .models import (
+    City,
+    Department,
+    Farm,
+    FarmRole,
+    FarmRoleAppPermission,
+    UserFarm,
+    UserFarmPermission,
+)
+from .modules import MODULES, OPERATIONS
 
 
 class UserSummarySerializer(serializers.ModelSerializer):
@@ -26,29 +34,6 @@ class CitySerializer(serializers.ModelSerializer):
     class Meta:
         model = City
         fields = ["id", "name", "department"]
-
-
-class PermissionsField(serializers.Field):
-    def to_representation(self, value: int) -> list[str]:
-        return [
-            p.name for p in FarmPermission if p != FarmPermission.ALL and (value & p)
-        ]
-
-    def to_internal_value(self, data) -> int:
-        if not isinstance(data, list):
-            raise serializers.ValidationError("Se esperaba una lista de permisos.")
-
-        result = 0
-        valid_names = {p.name for p in FarmPermission if p != FarmPermission.ALL}
-
-        for name in data:
-            if name not in valid_names:
-                raise serializers.ValidationError(
-                    f"Permiso inválido: '{name}'. Opciones: {sorted(valid_names)}"
-                )
-            result |= FarmPermission[name]
-
-        return int(result)
 
 
 class FarmSerializer(serializers.ModelSerializer):
@@ -115,66 +100,69 @@ class FarmSerializer(serializers.ModelSerializer):
         return value
 
 
-def get_role_permission_apps():
-    apps_by_label = {
-        config.label: config.verbose_name
-        for config in apps.get_app_configs()
-        if config.name.startswith("apps.")
-        and config.label not in ("accounts", "core")
-    }
-    apps_by_label.update(
-        {
-            "core_alerts": "Alertas",
-            "core_auditlogs": "AuditLog",
-        }
-    )
-    return apps_by_label
+def get_role_permission_modules():
+    return MODULES
 
 
 class FarmRoleAppPermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = FarmRoleAppPermission
-        fields = ["app", "can_view", "can_create", "can_edit", "can_delete"]
+        fields = ["module", "can_view", "can_create", "can_update", "can_delete"]
 
-    def validate_app(self, value):
-        if value not in get_role_permission_apps():
-            raise serializers.ValidationError("La aplicación no está implementada.")
+    def to_internal_value(self, data):
+        allowed = set(self.fields)
+        if not hasattr(data, "keys") or set(data.keys()) - allowed:
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors": (
+                        "Envía solo el módulo y las operaciones view, create, "
+                        "update y delete."
+                    )
+                }
+            )
+        return super().to_internal_value(data)
+
+    def validate_module(self, value):
+        if value not in get_role_permission_modules():
+            raise serializers.ValidationError("El módulo no está implementado.")
         return value
 
     def validate(self, attrs):
-        app = attrs.get("app", getattr(self.instance, "app", None))
-        if app in ("core_alerts", "core_auditlogs"):
+        module = attrs.get("module", getattr(self.instance, "module", None))
+        if module in ("alerts", "audit_logs"):
             if any(
-                attrs.get(field, getattr(self.instance, field, False))
-                for field in ("can_create", "can_edit", "can_delete")
+                attrs.get(f"can_{operation}", getattr(self.instance, f"can_{operation}", False))
+                for operation in ("create", "update", "delete")
             ):
                 raise serializers.ValidationError(
-                    "Alertas y AuditLog solo permiten el permiso de lectura."
+                    "Alertas y Audit logs solo permiten la operación view."
                 )
-        if any(
-            attrs.get(field, getattr(self.instance, field, False))
-            for field in ("can_create", "can_edit", "can_delete")
-        ) and not attrs.get("can_view", getattr(self.instance, "can_view", False)):
-            raise serializers.ValidationError(
-                {"can_view": "El permiso de ver es obligatorio para los demás permisos."}
-            )
         return attrs
 
 
 class FarmRoleSerializer(serializers.ModelSerializer):
-    permissions = PermissionsField(required=False, default=0)
-    app_permissions = FarmRoleAppPermissionSerializer(many=True, required=False)
+    module_permissions = FarmRoleAppPermissionSerializer(many=True, required=False)
 
     class Meta:
         model = FarmRole
-        fields = ["id", "farm", "name", "permissions", "app_permissions"]
+        fields = ["id", "farm", "name", "module_permissions"]
         read_only_fields = ["farm"]
 
-    def validate_app_permissions(self, permissions):
-        app_names = [permission["app"] for permission in permissions]
-        if len(app_names) != len(set(app_names)):
+    def to_internal_value(self, data):
+        if not hasattr(data, "keys") or set(data.keys()) - {
+            "name",
+            "module_permissions",
+        }:
             raise serializers.ValidationError(
-                "No se puede repetir una aplicación en los permisos del rol."
+                {"non_field_errors": "Envía solo name y module_permissions."}
+            )
+        return super().to_internal_value(data)
+
+    def validate_module_permissions(self, permissions):
+        module_names = [permission["module"] for permission in permissions]
+        if len(module_names) != len(set(module_names)):
+            raise serializers.ValidationError(
+                "No se puede repetir un módulo en los permisos del rol."
             )
         return permissions
 
@@ -198,58 +186,72 @@ class FarmRoleSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        app_permissions = validated_data.pop("app_permissions", None)
-        if app_permissions is not None:
-            validated_data["permissions"] = 0
-        role = FarmRole.objects.create(
-            permissions_configured=app_permissions is not None,
-            **validated_data,
-        )
-        if app_permissions:
+        module_permissions = validated_data.pop("module_permissions", [])
+        role = FarmRole.objects.create(**validated_data)
+        if module_permissions:
             audit_bulk_create(
                 FarmRoleAppPermission,
                 [
                     FarmRoleAppPermission(role=role, **permission)
-                    for permission in app_permissions
+                    for permission in module_permissions
                 ]
             )
         return role
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        app_permissions = validated_data.pop("app_permissions", None)
-        legacy_permissions = instance.permissions
-        if app_permissions is not None:
-            validated_data["permissions"] = 0
-            validated_data["permissions_configured"] = True
-        permissions_changed = "permissions" in validated_data
+        module_permissions = validated_data.pop("module_permissions", None)
         instance = super().update(instance, validated_data)
-        if app_permissions is not None:
-            audit_queryset_update(
-                instance.user_farms.filter(permissions=legacy_permissions),
-                permissions=0,
-            )
-        elif permissions_changed:
-            audit_queryset_update(
-                instance.user_farms.all(),
-                permissions=instance.permissions,
-            )
-        if app_permissions is not None:
-            instance.app_permissions.all().delete()
+        if module_permissions is not None:
+            instance.module_permissions.all().delete()
             audit_bulk_create(
                 FarmRoleAppPermission,
                 [
                     FarmRoleAppPermission(role=instance, **permission)
-                    for permission in app_permissions
+                    for permission in module_permissions
                 ]
             )
         return instance
 
 
+class UserFarmPermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserFarmPermission
+        fields = ["id", "module", "operation"]
+        read_only_fields = ["id"]
+
+    def to_internal_value(self, data):
+        if not hasattr(data, "keys") or set(data.keys()) != {"module", "operation"}:
+            raise serializers.ValidationError(
+                {"non_field_errors": "Envía exactamente un module y una operation."}
+            )
+        return super().to_internal_value(data)
+
+    def validate_module(self, value):
+        if value not in MODULES:
+            raise serializers.ValidationError("El módulo no está implementado.")
+        return value
+
+    def validate_operation(self, value):
+        if value not in OPERATIONS:
+            raise serializers.ValidationError(
+                f"Operación inválida. Opciones: {', '.join(OPERATIONS)}."
+            )
+        return value
+
+    def validate(self, attrs):
+        if attrs["module"] in ("alerts", "audit_logs") and attrs["operation"] != "view":
+            raise serializers.ValidationError(
+                {"operation": "Este módulo solo permite la operación view."}
+            )
+        return attrs
+
+
 class UserFarmSerializer(serializers.ModelSerializer):
-    permissions = PermissionsField(required=False, default=0)
     user = UserSummarySerializer(read_only=True)
     user_id = serializers.IntegerField(read_only=True)
+    personal_permissions = UserFarmPermissionSerializer(many=True, read_only=True)
+    effective_permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = UserFarm
@@ -258,11 +260,17 @@ class UserFarmSerializer(serializers.ModelSerializer):
             "user_id",
             "farm",
             "farm_role",
-            "permissions",
+            "personal_permissions",
+            "effective_permissions",
             "status",
             "is_owner",
         ]
         read_only_fields = ["user", "user_id", "farm", "is_owner"]
+
+    def get_effective_permissions(self, membership):
+        from .utils import get_effective_permissions
+
+        return get_effective_permissions(membership)
 
     def validate(self, attrs):
         farm = attrs.get("farm", getattr(self.instance, "farm", None))
