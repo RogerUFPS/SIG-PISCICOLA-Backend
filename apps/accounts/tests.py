@@ -1,12 +1,16 @@
 from datetime import timedelta
+from importlib import import_module
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.apps import apps as django_apps
+from django.db import connection
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from apps.farms.models import (
     City,
@@ -65,6 +69,7 @@ class AccountAuthenticationTests(TestCase):
 
     def test_authenticated_activity_extends_idle_timeout(self):
         session = UserSession.objects.get(user=self.user)
+        original_expiry = session.expires_at
         session.last_activity = timezone.now() - timedelta(minutes=14)
         session.save(update_fields=["last_activity"])
 
@@ -75,6 +80,32 @@ class AccountAuthenticationTests(TestCase):
         self.assertEqual(authenticated_user, self.user)
         session.refresh_from_db()
         self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
+        self.assertGreater(session.expires_at, original_expiry)
+        self.assertLessEqual(
+            session.expires_at,
+            timezone.now() + timedelta(minutes=15),
+        )
+
+    def test_activity_keeps_session_alive_past_initial_expiration(self):
+        session = UserSession.objects.get(user=self.user)
+        now = timezone.now()
+        session.last_activity = now - timedelta(minutes=1)
+        session.expires_at = now - timedelta(seconds=1)
+        session.save(update_fields=["last_activity", "expires_at"])
+
+        request = APIRequestFactory().get("/api/species/")
+        request.META["HTTP_AUTHORIZATION"] = "Bearer " + self.tokens["access"]
+        authenticated_user, _ = SessionJWTAuthentication().authenticate(request)
+
+        self.assertEqual(authenticated_user, self.user)
+        session.refresh_from_db()
+        self.assertIsNone(session.revoked_at)
+        self.assertGreater(session.expires_at, now + timedelta(minutes=14))
+        token = AccessToken(self.tokens["access"])
+        self.assertGreater(
+            token["exp"],
+            int((now + timedelta(minutes=15)).timestamp()),
+        )
 
     def test_idle_session_is_rejected_and_revoked(self):
         session = UserSession.objects.get(user=self.user)
@@ -103,9 +134,11 @@ class AccountAuthenticationTests(TestCase):
         with self.assertRaises(TokenError):
             RefreshToken(self.tokens["refresh"])
 
-    def test_login_blocks_a_second_active_session_for_the_account(self):
+    def test_login_replaces_the_existing_session_for_the_account(self):
         self.user.set_password("test-password")
         self.user.save(update_fields=["password"])
+        previous_session = UserSession.objects.get(user=self.user)
+        login_started_at = timezone.now()
 
         response = APIClient().post(
             "/api/auth/login/",
@@ -113,7 +146,18 @@ class AccountAuthenticationTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 200)
+        previous_session.refresh_from_db()
+        self.assertIsNotNone(previous_session.revoked_at)
+        current_session = UserSession.objects.get(
+            user=self.user,
+            revoked_at__isnull=True,
+        )
+        self.assertNotEqual(current_session.pk, previous_session.pk)
+        self.assertGreater(
+            current_session.expires_at,
+            login_started_at + timedelta(minutes=14),
+        )
         self.assertEqual(
             UserSession.objects.filter(
                 user=self.user,
@@ -122,6 +166,41 @@ class AccountAuthenticationTests(TestCase):
             ).count(),
             1,
         )
+        self.assertLessEqual(
+            current_session.expires_at,
+            timezone.now() + timedelta(minutes=15),
+        )
+        old_refresh_response = APIClient().post(
+            "/api/auth/token/refresh/",
+            {"refresh": self.tokens["refresh"]},
+            format="json",
+        )
+        self.assertEqual(old_refresh_response.status_code, 400)
+
+    def test_failed_login_does_not_revoke_the_existing_session(self):
+        session = UserSession.objects.get(user=self.user)
+        response = APIClient().post(
+            "/api/auth/login/",
+            {"email": self.user.email, "password": "incorrect-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        session.refresh_from_db()
+        self.assertIsNone(session.revoked_at)
+
+    def test_existing_sessions_are_revoked_by_deployment_migration(self):
+        migration = import_module(
+            "apps.accounts.migrations.0007_revoke_existing_active_sessions"
+        )
+
+        migration.revoke_existing_active_sessions(
+            django_apps,
+            SimpleNamespace(connection=connection),
+        )
+
+        session = UserSession.objects.get(user=self.user)
+        self.assertIsNotNone(session.revoked_at)
 
     def test_refresh_activity_extends_session_and_rotates_tokens(self):
         session = UserSession.objects.get(user=self.user)
@@ -139,6 +218,7 @@ class AccountAuthenticationTests(TestCase):
         self.assertIn("refresh", response.data)
         session.refresh_from_db()
         self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
+        self.assertGreater(session.expires_at, timezone.now() + timedelta(minutes=14))
 
     def test_role_app_permissions_apply_to_each_request(self):
         request = APIRequestFactory().get("/api/species/")

@@ -40,6 +40,3 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 JWT_IDLE_TIMEOUT = timedelta(
     minutes=int(os.getenv("JWT_IDLE_TIMEOUT_MINUTES", "15"))
 )
-JWT_SESSION_ABSOLUTE_LIFETIME = timedelta(
-    days=int(os.getenv("JWT_SESSION_ABSOLUTE_LIFETIME_DAYS", "7"))
-)

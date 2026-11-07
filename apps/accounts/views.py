@@ -4,7 +4,6 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -42,20 +41,11 @@ def get_tokens_for_user(user):
             UserSession.objects.filter(
                 user=locked_user,
                 revoked_at__isnull=True,
-            ).filter(
-                Q(expires_at__lte=now)
-                | Q(last_activity__lte=now - settings.JWT_IDLE_TIMEOUT)
             ).update(revoked_at=now)
-            if UserSession.objects.filter(
-                user=locked_user,
-                revoked_at__isnull=True,
-                expires_at__gt=now,
-            ).exists():
-                raise ActiveSessionConflict()
 
             session = UserSession.objects.create(
                 user=locked_user,
-                expires_at=now + settings.JWT_SESSION_ABSOLUTE_LIFETIME,
+                expires_at=now + settings.JWT_IDLE_TIMEOUT,
             )
             refresh = RefreshToken.for_user(locked_user)
             refresh["sid"] = str(session.pk)

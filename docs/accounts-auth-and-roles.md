@@ -7,10 +7,14 @@ administra los roles y asigna cada rol a los operarios de esa granja.
 
 ## Sesiones de cuenta
 
-Cada cuenta puede tener una sola sesión activa. Si se intenta iniciar sesión
-mientras existe una sesión vigente para esa cuenta, la API responde `409
-Conflict`; la sesión anterior debe cerrarse o vencer por inactividad o por su
-duración máxima antes de permitir otro inicio de sesión.
+Cada cuenta puede tener una sola sesión activa. Tras 15 minutos sin actividad,
+la sesión vence. Cada solicitud autenticada y cada renovación de token reinicia
+el temporizador de inactividad; no hay una duración máxima absoluta. Los
+tokens no imponen un límite menor: su validez queda subordinada a la sesión
+activa del servidor. Un inicio de sesión con credenciales correctas revoca la
+sesión anterior e inicia una nueva; credenciales incorrectas no afectan a la
+sesión actual. Las sesiones que ya estaban activas se revocan al aplicar la
+migración `accounts.0007`.
 
 ### `GET /api/farms/<farm_id>/roles/apps/`
 
