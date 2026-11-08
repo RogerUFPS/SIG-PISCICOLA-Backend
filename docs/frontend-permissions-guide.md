@@ -27,6 +27,11 @@ The farm owner and global `Admin` retain their existing administrative bypass.
 For members, permissions are evaluated on every request, so role changes apply
 immediately, including to users with an active session.
 
+Audit log responses retain the actor's numeric `user` ID and also include
+`user_name` for display. It contains the user's full name, falling back to
+their email if their name is blank; it is `null` when the audit record has no
+associated user.
+
 ### Module identifiers
 
 Use the identifiers returned by `GET farms/{farm_id}/roles/modules/`. These are

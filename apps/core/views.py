@@ -26,7 +26,9 @@ class AuditLogView(viewsets.ReadOnlyModelViewSet):
     pagination_class = AuditLogPagination
 
     def get_queryset(self):
-        return AuditLog.objects.filter(farm_id=self.kwargs["farm_pk"])
+        return AuditLog.objects.filter(farm_id=self.kwargs["farm_pk"]).select_related(
+            "user"
+        )
 
 
 from rest_framework import viewsets
