@@ -31,6 +31,9 @@ class CompletionPermission(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
+        if request.path == "/api/users/me/":
+            return True
+
         if any(request.path.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
             return True
 

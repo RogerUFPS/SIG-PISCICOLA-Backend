@@ -1,7 +1,11 @@
 # middleware.py
 from django.http import JsonResponse
 
-TEMP_PASSWORD_EXEMPT = {"/api/auth/change-password/", "/api/auth/logout/"}
+TEMP_PASSWORD_EXEMPT = {
+    "/api/auth/change-password/",
+    "/api/auth/logout/",
+    "/api/users/me/complete/",
+}
 
 PROFILE_EXEMPT = {"/api/users/me/complete/", "/api/auth/logout/"}
 
