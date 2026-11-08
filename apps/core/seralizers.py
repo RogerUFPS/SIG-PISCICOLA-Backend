@@ -10,9 +10,29 @@ class UnitSerializer(serializers.ModelSerializer):
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+
     class Meta:
         model = AuditLog
-        fields = "__all__"
+        fields = [
+            "id",
+            "user",
+            "user_name",
+            "farm_id",
+            "description",
+            "type_source",
+            "source_id",
+            "ip",
+            "old_values",
+            "new_values",
+            "created_at",
+        ]
+
+    def get_user_name(self, obj) -> str | None:
+        if obj.user is None:
+            return None
+        full_name = f"{obj.user.name or ''} {obj.user.lastname or ''}".strip()
+        return full_name or obj.user.email
 
 
 class AlertSerializer(serializers.ModelSerializer):

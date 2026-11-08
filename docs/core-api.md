@@ -81,6 +81,7 @@ Obtiene un registro de auditoría de esa finca. Cada elemento contiene:
 | --- | --- | --- |
 | `id` | integer | Identificador. |
 | `user` | integer o `null` | Identificador del usuario relacionado. |
+| `user_name` | string o `null` | Nombre completo del usuario que realizó el cambio; si no tiene nombre, contiene su correo. |
 | `farm_id` | integer o `null` | Identificador de la finca relacionada. |
 | `description` | string | Descripción del cambio. |
 | `type_source` | string | Tipo de entidad que originó el registro. |

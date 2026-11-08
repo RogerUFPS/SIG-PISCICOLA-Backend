@@ -59,6 +59,7 @@ class CoreAccessTests(TestCase):
         )
         AuditLog.objects.create(
             farm_id=self.farm.pk,
+            user=self.operator,
             description="Farm updated",
             type_source=AuditLog.TypeSource.FARM,
         )
@@ -97,6 +98,56 @@ class CoreAccessTests(TestCase):
             any(log["description"] == "Farm updated" for log in results)
         )
         self.assertTrue(all(log["farm_id"] == self.farm.pk for log in results))
+        farm_change = next(
+            log for log in results if log["description"] == "Farm updated"
+        )
+        self.assertEqual(farm_change["user"], self.operator.pk)
+        self.assertEqual(farm_change["user_name"], "core-operator@example.com")
+
+    def test_audit_response_includes_actor_name_and_email_fallback(self):
+        self.operator.name = "Ana"
+        self.operator.lastname = "Pérez"
+        self.operator.save(update_fields=["name", "lastname"])
+        audit_log = AuditLog.objects.create(
+            farm_id=self.farm.pk,
+            user=self.operator,
+            description="Role changed",
+            type_source=AuditLog.TypeSource.USER_FARM,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=self.role,
+            module="audit_logs",
+            can_view=True,
+        )
+
+        list_response = self.client.get(
+            f"/api/farms/core/{self.farm.pk}/auditlogs/"
+        )
+        detail_response = self.client.get(
+            f"/api/farms/core/{self.farm.pk}/auditlogs/{audit_log.pk}/"
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        list_item = next(
+            log
+            for log in list_response.data["results"]
+            if log["id"] == audit_log.pk
+        )
+        self.assertEqual(list_item["user"], self.operator.pk)
+        self.assertEqual(list_item["user_name"], "Ana Pérez")
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.data["user_name"], "Ana Pérez")
+
+        self.operator.name = None
+        self.operator.lastname = None
+        self.operator.save(update_fields=["name", "lastname"])
+        detail_response = self.client.get(
+            f"/api/farms/core/{self.farm.pk}/auditlogs/{audit_log.pk}/"
+        )
+        self.assertEqual(
+            detail_response.data["user_name"],
+            self.operator.email,
+        )
 
     @patch("apps.core.utils.ensure_overdue_events_alerts")
     def test_alerts_and_audit_logs_are_read_only(self, _ensure_alerts):
