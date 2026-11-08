@@ -70,8 +70,14 @@ actualización, resolución ni eliminación.
 Lista los registros de auditoría de la finca indicada. Requiere acceso a la
 finca y permiso `audit_logs.view`; cada respuesta contiene como
 máximo 50 registros y usa paginación (`count`, `next`, `previous`, `results`).
-La página se solicita con `?page=<n>`; no existe una opción para desactivar la
-paginación ni aumentar el tamaño de página.
+La página se solicita con `?page=<n>`. Se puede filtrar con `date_from`,
+`date_to` (`YYYY-MM-DD`), `origin` (valor de `type_source`), `origin_id`
+(`source_id`), `user` (ID, nombre, apellido o correo) e `ip` (coincidencia
+exacta). Los filtros se pueden combinar; se devuelven errores `400` para
+parámetros inválidos y los valores vacíos se ignoran. Consulta la
+[guía de filtros de auditoría](./auditlog-filters-implementation.md) para
+ejemplos y validación. No existe una opción para desactivar la paginación ni
+aumentar el tamaño de página.
 
 ### `GET /api/farms/core/<farm_id>/auditlogs/<id>/`
 
