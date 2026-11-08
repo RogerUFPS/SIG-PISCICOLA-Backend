@@ -35,5 +35,6 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+.docs/*
 .docs/
 .dockerignore

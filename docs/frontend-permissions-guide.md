@@ -262,6 +262,11 @@ password with `POST auth/change-password/` (`current_password` and
 `new_password`) and complete their profile with
 `POST users/me/complete/` (`name`, `lastname`, `cc`, and `phone`).
 
+The authenticated user can read or update only their own profile with
+`GET users/me/` or `PATCH users/me/`. These self-service requests do not require
+a farm role or a `user_administration` grant; the endpoint always resolves the
+target user from the authenticated token and does not accept a target user ID.
+
 ### `GET invitations/?farm_id={farm_id}`
 
 Requires `user_administration.view`, or farm-owner/`Admin` access. Lists

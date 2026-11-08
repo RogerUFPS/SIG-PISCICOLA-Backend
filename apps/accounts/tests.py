@@ -65,6 +65,10 @@ class AccountAuthenticationTests(TestCase):
         self.farm = farm
         self.farm_role = farm_role
         self.tokens = get_tokens_for_user(self.user)
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {self.tokens['access']}"
+        )
 
     def test_authenticated_activity_extends_idle_timeout(self):
         session = UserSession.objects.get(user=self.user)
@@ -244,6 +248,63 @@ class AccountAuthenticationTests(TestCase):
             can_create=True
         )
         self.assertTrue(AppPermission().has_permission(request, view))
+
+    def test_user_can_read_and_update_their_own_profile_without_role_grants(self):
+        response = self.client.get("/api/users/me/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], self.user.pk)
+
+        response = self.client.patch(
+            "/api/users/me/",
+            {"name": "Self service"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], self.user.pk)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.name, "Self service")
+
+    def test_temporary_password_user_can_complete_their_own_profile(self):
+        invited_user = User.objects.create_user(
+            email="invited@example.com",
+            password="temporary-password",
+            role=self.role,
+            is_temp_password=True,
+            is_profile_complete=False,
+        )
+        tokens = get_tokens_for_user(invited_user)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        response = client.post(
+            "/api/users/me/complete/",
+            {
+                "name": "Invited",
+                "lastname": "User",
+                "cc": "123456789",
+                "phone": "3000000000",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        invited_user.refresh_from_db()
+        self.assertTrue(invited_user.is_profile_complete)
+        self.assertTrue(invited_user.is_temp_password)
+
+    def test_user_cannot_choose_another_users_profile(self):
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="test-password",
+            role=self.role,
+            is_profile_complete=True,
+        )
+
+        response = self.client.get(f"/api/users/{other_user.pk}/")
+
+        self.assertEqual(response.status_code, 404)
 
     def test_permissions_from_one_farm_do_not_apply_to_another(self):
         department = self.farm.department
