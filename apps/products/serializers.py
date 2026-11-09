@@ -70,9 +70,14 @@ class SupplierSerializer(serializers.ModelSerializer):
         read_only_fields = ["farm", "created_at", "updated_at"]
 
     def validate_phone(self, value):
-        if value and not re.fullmatch(r"[0-9]{10}", value):
+        digit_count = sum("0" <= char <= "9" for char in value)
+        if value and (
+            not re.fullmatch(r"\+?[0-9\s()-]+", value)
+            or not 7 <= digit_count <= 15
+        ):
             raise serializers.ValidationError(
-                "El teléfono del proveedor debe contener exactamente 10 dígitos."
+                "El teléfono debe contener entre 7 y 15 dígitos. "
+                "Puede incluir +, espacios, guiones o paréntesis."
             )
         return value
 

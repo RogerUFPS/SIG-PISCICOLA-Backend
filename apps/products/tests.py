@@ -9,16 +9,24 @@ from apps.products.views import ProductViewSet
 
 
 class SupplierPhoneValidationTests(SimpleTestCase):
-    def test_accepts_ten_digit_phone(self):
+    def test_accepts_valid_colombian_phone(self):
         self.assertEqual(
-            SupplierSerializer().validate_phone("3001234567"), "3001234567"
+            SupplierSerializer().validate_phone("3227174462"), "3227174462"
         )
+
+    def test_accepts_longer_international_phone(self):
+        phone = "+57 (322) 717-4462"
+        self.assertEqual(SupplierSerializer().validate_phone(phone), phone)
+
+    def test_accepts_up_to_fifteen_digits(self):
+        phone = "123456789012345"
+        self.assertEqual(SupplierSerializer().validate_phone(phone), phone)
 
     def test_allows_blank_phone(self):
         self.assertEqual(SupplierSerializer().validate_phone(""), "")
 
-    def test_rejects_phone_with_length_other_than_ten_digits(self):
-        for phone in ("300123456", "30012345678", "30012345ab"):
+    def test_rejects_invalid_phone_lengths_and_characters(self):
+        for phone in ("123456", "1234567890123456", "30012345ab"):
             with self.subTest(phone=phone):
                 with self.assertRaises(serializers.ValidationError):
                     SupplierSerializer().validate_phone(phone)
