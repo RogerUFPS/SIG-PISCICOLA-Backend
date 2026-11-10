@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 from datetime import date, datetime, time, timedelta
 
@@ -530,7 +531,7 @@ class CoreAccessTests(TestCase):
             farm_id=self.farm.pk,
             type_source=AuditLog.TypeSource.FARM_ROLE,
             source_id=role.pk,
-            description=f"FarmRole {role.pk} created",
+            description__contains="creó el rol de finca «Audited role»",
         )
         self.assertIsNone(created.old_values)
         self.assertEqual(created.new_values["name"], "Audited role")
@@ -541,7 +542,7 @@ class CoreAccessTests(TestCase):
             farm_id=self.farm.pk,
             type_source=AuditLog.TypeSource.FARM_ROLE,
             source_id=role.pk,
-            description=f"FarmRole {role.pk} updated",
+            description__contains="actualizó el rol de finca «Renamed role»",
         )
         self.assertEqual(updated.old_values["name"], "Audited role")
         self.assertEqual(updated.new_values["name"], "Renamed role")
@@ -552,10 +553,145 @@ class CoreAccessTests(TestCase):
             farm_id=self.farm.pk,
             type_source=AuditLog.TypeSource.FARM_ROLE,
             source_id=role_id,
-            description=f"FarmRole {role_id} deleted",
+            description__contains="eliminó el rol de finca «Renamed role»",
         )
         self.assertEqual(deleted.old_values["name"], "Renamed role")
         self.assertIsNone(deleted.new_values)
+
+    def test_user_farm_role_audit_contains_readable_actor_target_and_role(self):
+        self.grant_audit_read()
+        self.operator.name = "Keyler Sneider Arias"
+        self.operator.lastname = "Calvo"
+        self.operator.save(update_fields=["name", "lastname"])
+        target = User.objects.create(
+            email="roger@example.com",
+            name="Roger Santiago Miranda",
+            lastname="Hoyos",
+            role=self.operator.role,
+        )
+        old_role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Ver usuarios",
+        )
+        new_role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Administrador",
+        )
+        membership = UserFarm.objects.create(
+            user=target,
+            farm=self.farm,
+            farm_role=old_role,
+        )
+        request = SimpleNamespace(
+            user=self.operator,
+            META={"REMOTE_ADDR": "192.0.2.20"},
+        )
+
+        with patch("apps.core.signals.get_current_request", return_value=request):
+            membership.farm_role = new_role
+            membership.save(update_fields=["farm_role"])
+
+        audit_log = AuditLog.objects.filter(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.USER_FARM,
+            source_id=membership.pk,
+            description__contains="cambió el rol",
+        ).latest("created_at")
+
+        self.assertEqual(
+            audit_log.description,
+            "Keyler Sneider Arias Calvo cambió el rol «Ver usuarios» "
+            "por «Administrador» en la finca «Core test farm».",
+        )
+        self.assertEqual(
+            audit_log.old_values["display"]["summary"],
+            "Roger Santiago Miranda Hoyos tenía asignado el rol "
+            "«Ver usuarios» en la finca «Core test farm».",
+        )
+        self.assertEqual(
+            audit_log.new_values["display"]["summary"],
+            "Roger Santiago Miranda Hoyos tiene asignado el rol "
+            "«Administrador» en la finca «Core test farm».",
+        )
+        self.assertEqual(
+            audit_log.old_values["display"]["fields"]["farm_role_id"]["value"],
+            {"id": old_role.pk, "nombre": "Ver usuarios"},
+        )
+        self.assertEqual(
+            audit_log.new_values["display"]["fields"]["user_id"]["value"],
+            {"id": target.pk, "nombre": "Roger Santiago Miranda Hoyos"},
+        )
+
+        response = self.client.get(
+            f"/api/farms/core/{self.farm.pk}/auditlogs/",
+            {"origin": "UserFarm", "origin_id": str(membership.pk)},
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        serialized = next(
+            item
+            for item in response.data["results"]
+            if item["id"] == audit_log.pk
+        )
+        self.assertEqual(serialized["description"], audit_log.description)
+        self.assertIn("display", serialized["old_values"])
+        self.assertIn("display", serialized["new_values"])
+
+        with patch("apps.core.signals.get_current_request", return_value=request):
+            membership.farm_role = None
+            membership.save(update_fields=["farm_role"])
+        removed_role = AuditLog.objects.filter(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.USER_FARM,
+            source_id=membership.pk,
+            description__contains="retiró el rol",
+        ).latest("created_at")
+        self.assertIn(
+            "retiró el rol «Administrador»",
+            removed_role.description,
+        )
+        self.assertEqual(
+            removed_role.old_values["display"]["summary"],
+            "Roger Santiago Miranda Hoyos tenía asignado el rol "
+            "«Administrador» en la finca «Core test farm».",
+        )
+        self.assertEqual(
+            removed_role.new_values["display"]["summary"],
+            "Roger Santiago Miranda Hoyos no tiene un rol asignado "
+            "en la finca «Core test farm».",
+        )
+
+    def test_role_permission_audit_describes_module_and_enabled_operations(self):
+        role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Coordinador",
+        )
+        request = SimpleNamespace(
+            user=self.operator,
+            META={"REMOTE_ADDR": "192.0.2.21"},
+        )
+
+        with patch("apps.core.signals.get_current_request", return_value=request):
+            permission = FarmRoleAppPermission.objects.create(
+                role=role,
+                module="audit_logs",
+                can_view=True,
+                can_update=True,
+            )
+
+        audit_log = AuditLog.objects.get(
+            farm_id=self.farm.pk,
+            type_source=AuditLog.TypeSource.FARM_ROLE_APP_PERMISSION,
+            source_id=permission.pk,
+        )
+        self.assertEqual(
+            audit_log.description,
+            "core-operator@example.com creó los permisos del rol «Coordinador» "
+            "para «Auditoría».",
+        )
+        self.assertEqual(
+            audit_log.new_values["display"]["summary"],
+            "Rol «Coordinador», módulo «Auditoría»: Consultar, Actualizar.",
+        )
 
     def test_audit_logs_are_always_paginated(self):
         FarmRoleAppPermission.objects.create(

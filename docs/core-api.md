@@ -93,9 +93,19 @@ Obtiene un registro de auditoría de esa finca. Cada elemento contiene:
 | `type_source` | string | Tipo de entidad que originó el registro. |
 | `source_id` | integer o `null` | Identificador de la entidad de origen. |
 | `ip` | string o `null` | Dirección IP registrada. |
-| `old_values` | object o `null` | Valores previos, si están disponibles. |
-| `new_values` | object o `null` | Valores nuevos, si están disponibles. |
+| `old_values` | object o `null` | Valores previos; en eventos nuevos incluye `display.fields` y `display.summary` legibles. |
+| `new_values` | object o `null` | Valores resultantes; en eventos nuevos incluye `display.fields` y `display.summary` legibles. |
 | `created_at` | fecha/hora | Fecha de creación. |
+
+Las descripciones nuevas generadas por señales están en español e incluyen
+actor, acción, objetivo legible y finca cuando aplica. Por ejemplo:
+`"Keyler Sneider Arias Calvo retiró el rol «Administrador» de Roger Santiago Miranda Hoyos en la finca «El Remanso»."`
+Los snapshots conservan las claves técnicas existentes y agregan `display`:
+`display.summary` es un texto listo para mostrar y `display.fields` contiene
+valores `{ "label", "value" }`, con referencias como `{ "id", "nombre" }`.
+Los eventos anteriores al cambio pueden no incluir este objeto. Consulta
+[auditlog-fields.md](./auditlog-fields.md) para el contrato y el ejemplo JSON
+completo. No se requieren migraciones.
 
 `type_source` puede ser: `User`, `UserFarm`, `Farm`, `FarmRole`,
 `FarmRoleAppPermission`, `Pond`,

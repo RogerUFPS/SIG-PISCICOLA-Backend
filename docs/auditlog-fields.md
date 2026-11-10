@@ -30,14 +30,50 @@ Una respuesta de lista tiene la forma:
     {
       "id": 301,
       "user": 27,
-      "user_name": "Ana Pérez",
+      "user_name": "Keyler Sneider Arias Calvo",
       "farm_id": 8,
-      "description": "FarmRole 12 updated",
-      "type_source": "FarmRole",
-      "source_id": 12,
+      "description": "Keyler Sneider Arias Calvo retiró el rol «Administrador» de Roger Santiago Miranda Hoyos en la finca «El Remanso».",
+      "type_source": "UserFarm",
+      "source_id": 43,
       "ip": "192.0.2.10",
-      "old_values": {"name": "Operador"},
-      "new_values": {"name": "Encargado"},
+      "old_values": {
+        "id": 43,
+        "user_id": 91,
+        "farm_id": 8,
+        "farm_role_id": 12,
+        "status": "active",
+        "is_owner": false,
+        "display": {
+          "fields": {
+            "id": {"label": "Id", "value": 43},
+            "user_id": {"label": "Usuario", "value": {"id": 91, "nombre": "Roger Santiago Miranda Hoyos"}},
+            "farm_id": {"label": "Finca", "value": {"id": 8, "nombre": "El Remanso"}},
+            "farm_role_id": {"label": "Rol", "value": {"id": 12, "nombre": "Administrador"}},
+            "status": {"label": "Estado", "value": "Trabaja actualmente"},
+            "is_owner": {"label": "Propietario", "value": "No"}
+          },
+          "summary": "Roger Santiago Miranda Hoyos tenía asignado el rol «Administrador» en la finca «El Remanso»."
+        }
+      },
+      "new_values": {
+        "id": 43,
+        "user_id": 91,
+        "farm_id": 8,
+        "farm_role_id": null,
+        "status": "active",
+        "is_owner": false,
+        "display": {
+          "fields": {
+            "id": {"label": "Id", "value": 43},
+            "user_id": {"label": "Usuario", "value": {"id": 91, "nombre": "Roger Santiago Miranda Hoyos"}},
+            "farm_id": {"label": "Finca", "value": {"id": 8, "nombre": "El Remanso"}},
+            "farm_role_id": {"label": "Rol", "value": null},
+            "status": {"label": "Estado", "value": "Trabaja actualmente"},
+            "is_owner": {"label": "Propietario", "value": "No"}
+          },
+          "summary": "Roger Santiago Miranda Hoyos no tiene un rol asignado en la finca «El Remanso»."
+        }
+      },
       "created_at": "2026-11-07T18:20:00Z"
     }
   ]
@@ -109,17 +145,17 @@ actual del backend. Los ejemplos son ilustrativos.
 ### `description`
 
 - **Tipo:** string.
-- **Descripción actual:** Texto breve generado al guardar el evento. Para los
-  cambios registrados por señales suele tener el formato
-  `"{Entidad} {id} {operación}"`, por ejemplo `"FarmRole 12 updated"`.
+- **Descripción actual:** Texto generado al guardar el evento. Las nuevas
+  entradas de las señales están en español e incluyen actor, acción, objetivo
+  con nombre y finca cuando aplica. Por ejemplo:
+  `"Keyler Sneider Arias Calvo retiró el rol «Administrador» de Roger Santiago Miranda Hoyos en la finca «El Remanso»."`
 - **Uso:** Resumen de una línea en la lista de auditoría.
-- **Origen:** `audit_log.description`; normalmente se genera en
-  `apps/core/signals.py` a partir del nombre de clase, ID y acción. Algunos
-  flujos especiales escriben una descripción propia.
-- **Ejemplo actual:** `"FarmRole 12 updated"`.
-- **Notas:** El texto actual suele estar en inglés y presenta el ID técnico.
-  No siempre explica el objeto afectado ni el cambio concreto. La mejora
-  recomendada se especifica en [Mejoras recomendadas](#mejoras-recomendadas-del-payload).
+- **Origen:** `audit_log.description`, generado por `apps/core/signals.py`.
+  Algunos flujos de auditoría especializados conservan su propio texto.
+- **Notas:** Las entradas anteriores no se reescriben y pueden seguir usando
+  el formato técnico en inglés. La descripción de cada evento nuevo queda
+  guardada como texto histórico y no cambia si luego se renombra una persona o
+  entidad.
 
 ### `type_source`
 
@@ -171,10 +207,11 @@ actual del backend. Los ejemplos son ilustrativos.
   `apps/core/signals.py` leyendo los campos del modelo.
 - **Ejemplo:** `{"name": "Operador"}`.
 - **Notas:** Es posible que sea `null` en una creación o cuando la instancia
-  previa no se pudo obtener. Se excluyen `password` y `last_login`; otras
-  claves foráneas suelen aparecer como IDs y pueden no ser comprensibles sin
-  resolución adicional. No se debe mostrar el JSON sin formato a usuarios
-  finales.
+  previa no se pudo obtener. En los eventos nuevos conserva las claves y
+  valores técnicos existentes y añade `display`, con etiquetas, referencias
+  legibles y resumen en español. Se excluyen `password` y `last_login`. Para
+  la interfaz usar `old_values.display.summary` y
+  `old_values.display.fields`, no mostrar el JSON crudo.
 
 ### `new_values`
 
@@ -186,9 +223,46 @@ actual del backend. Los ejemplos son ilustrativos.
   como JSON. En una eliminación se almacena `null`.
 - **Ejemplo:** `{"name": "Encargado"}`.
 - **Notas:** En una creación contiene el estado creado; en una actualización,
-  el estado posterior; en una eliminación, `null`. Los campos relacionados
-  pueden ser IDs. Conviene presentar diferencias campo por campo con etiquetas
-  traducidas y valores relacionados resueltos.
+  el estado posterior; en una eliminación, `null`. Conserva los valores
+  técnicos previos y agrega `display` con las etiquetas y nombres que la
+  interfaz necesita sin hacer peticiones extra. Usar
+  `new_values.display.summary` y `new_values.display.fields`.
+
+### `old_values.display` y `new_values.display`
+
+Estos objetos se agregan en los eventos generados por las señales a partir de
+este cambio. Las claves técnicas de `old_values` y `new_values` se mantienen
+para compatibilidad.
+
+```json
+{
+  "farm_role_id": 12,
+  "display": {
+    "fields": {
+      "farm_role_id": {
+        "label": "Rol",
+        "value": {"id": 12, "nombre": "Administrador"}
+      },
+      "status": {
+        "label": "Estado",
+        "value": "Trabaja actualmente"
+      }
+    },
+    "summary": "Roger Santiago Miranda Hoyos tenía asignado el rol «Administrador» en la finca «El Remanso»."
+  }
+}
+```
+
+- `fields`: representación legible de cada campo. La clave coincide con el
+  nombre técnico para facilitar la comparación; `label` es el nombre para la
+  interfaz. Para relaciones `value` tiene `{ "id", "nombre" }`; para opciones
+  y booleanos se usan etiquetas como `"Trabaja actualmente"` y `"Sí"`/`"No"`.
+- `summary`: frase breve en español. En un cambio de rol de membresía, el
+  valor anterior usa pasado (`tenía asignado`) y el nuevo describe el estado
+  resultante (`tiene asignado` o `no tiene un rol asignado`).
+- Este campo anidado no se calcula retroactivamente: las entradas existentes
+  antes del despliegue no tendrán `display`. La interfaz debe tolerar su
+  ausencia y recurrir a los valores técnicos para esos registros antiguos.
 
 ### `created_at`
 
@@ -333,57 +407,51 @@ Cuando el objeto ya no exista, la referencia debe permanecer útil y explícita:
 
 ### `description`: resumen de acción claro y en español
 
-**Comportamiento actual:** generalmente se genera como `"{clase} {id}
-{operación}"`. Es una descripción técnica; puede estar en inglés y no suele
-decir quién hizo el cambio ni mostrar los valores modificados.
+**Implementado para eventos nuevos generados por señales:** se genera una
+frase en español con actor, acción, objetivo y finca cuando aplica.
 
-| Antes | Después (propuesta en español) |
+| Antes | Ahora |
 | --- | --- |
-| `"FarmRole 12 updated"` | `"Ana Pérez actualizó el rol «Operador» de la finca «El Remanso»."` |
-| `"UserFarm 27 created"` | `"Carlos Díaz agregó a Ana Pérez a la finca «El Remanso»."` |
-| `"Product 43 deleted"` | `"Ana Pérez eliminó el producto «Alimento de engorde» de la finca «El Remanso»."` |
+| `"UserFarm 43 updated"` | `"Keyler Sneider Arias Calvo retiró el rol «Administrador» de Roger Santiago Miranda Hoyos en la finca «El Remanso»."` |
+| `"FarmRole 12 updated"` | `"Ana Pérez actualizó el rol de finca «Operador» de la finca «El Remanso»."` |
 
-- **Backend:** registrar un código de evento estable (por ejemplo,
-  `farm_role.updated`) y contexto estructurado: actor, objeto, finca, acción y
-  diferencias seguras. Producir una frase base consistente en español o
-  devolver clave + parámetros para localización. No inferir el verbo solo del
-  nombre de la clase.
-- **Frontend:** presentar la frase en español; si el backend entrega claves,
-  mantener el catálogo de traducciones y escapar los valores interpolados.
-- **Contrato:** propuesta aditiva; conservar temporalmente `description` como
-  texto legado y usar `detail.summary` como texto preferido. El formato actual
-  puede seguir existiendo para clientes previos hasta retirar la versión
-  antigua.
-- **Caveat:** algunas operaciones usan descripciones personalizadas. La
-  migración debe estandarizar esos productores para que la experiencia sea
-  uniforme.
+- **Backend:** la generación común está implementada en `apps/core/signals.py`.
+  Hay textos especializados para cambios de membresía y permisos de rol; los
+  demás tipos de entidad usan un nombre localizado, un nombre/código legible
+  y el contexto de finca cuando se puede determinar.
+- **Frontend:** mostrar `description` directamente como resumen principal.
+  Los valores interpolados son texto; renderizarlos escapados, nunca como
+  HTML.
+- **Contrato:** no cambia el tipo ni el nombre del campo. Los eventos antiguos
+  y algunos flujos especializados pueden conservar descripciones anteriores.
 
 ### `old_values` y `new_values`: diferencias legibles
 
-- **Backend:** agregar a `detail.changes` una lista curada de cambios con
-  nombre de campo localizado y valores anteriores/nuevos. Resolver relaciones
-  conocidas (por ejemplo, ID de finca a nombre de finca) al crear el detalle.
-  Omitir secretos y campos internos.
-- **Frontend:** renderizar los cambios como pares **«Antes»** y **«Después»**,
-  con etiquetas en español; no presentar claves técnicas ni el JSON crudo en
-  la vista normal.
-- **Contrato:** `old_values` y `new_values` se conservan para soporte y
-  compatibilidad. `detail.changes` es la representación recomendada para la
-  interfaz.
-- **Caveat:** restringir campos visibles por tipo de entidad; no exponer
-  contraseñas, tokens, datos privados innecesarios ni valores internos
-  directamente.
+- **Backend:** en eventos nuevos, ambos snapshots conservan los valores
+  técnicos actuales y agregan `display.fields` con etiquetas y relaciones
+  legibles, además de `display.summary`. El caso de cambio/eliminación de rol
+  en una membresía identifica al usuario objetivo y el rol anterior/nuevo.
+- **Frontend:** presentar `display.summary` como texto destacado y
+  `display.fields` como diferencias **«Antes» / «Después»**. Usar `label` y
+  `value`; no mostrar claves técnicas ni el JSON crudo. Si `display` no existe
+  (evento anterior o flujo especializado), usar un fallback genérico sin
+  efectuar peticiones automáticas por cada ID.
+- **Contrato:** cambio aditivo en el contenido de los JSON existentes; los
+  campos previos y sus claves no se eliminan. No requiere migración de base de
+  datos. Algunas entradas preexistentes no tienen la información nueva.
+- **Privacidad:** se mantienen excluidos `password` y `last_login`; no mostrar
+  valores técnicos de los snapshots como texto final sin revisar el tipo de
+  entidad.
 
 ## Resumen de trabajo recomendado
 
 | Cambio | Backend | Frontend | Cambio de contrato |
 | --- | --- | --- | --- |
-| Referencia `origin` | Resolver entidad, validar ámbito de finca y producir nombre, etiqueta, URL API canónica y vista previa en lote. | Mostrar nombre, tipo, enlace a la pantalla correcta y vista previa; mostrar **«Elemento no disponible»** si fue eliminado. | Agregar `origin`; conservar `source_id` deprecado durante la transición y quitarlo en una versión mayor. |
-| Descripción de acción | Estandarizar tipos de evento y contexto; generar resumen en español o clave y parámetros. | Mostrar texto claro y localizar/escapar valores si recibe claves. | Agregar `detail.summary`; mantener `description` temporalmente. |
-| Detalle de cambios | Construir `detail.actor`, `detail.target`, `detail.changes` y `detail.occurred_at` con datos seguros. | Presentar actor, objetivo, hora y cambios **«Antes» / «Después»** en español. | Agregar `detail` de forma aditiva; mantener `old_values` y `new_values` como campos técnicos durante la transición. |
-| Campos técnicos | Mantener IDs y JSON para integración/soporte, evitando filtraciones. | No usar IDs como etiqueta principal ni mostrar JSON crudo en la vista normal. | Preservar campos actuales hasta una versión mayor documentada. |
+| Referencia `origin` | Pendiente: resolver entidad, validar ámbito de finca y producir nombre, URL API y vista previa en lote. | Pendiente: mostrar nombre, tipo, enlace y vista previa. | Sigue siendo propuesta; hoy se mantienen `type_source` y `source_id`. |
+| Descripción de acción | Implementado en señales comunes con actor, acción, objetivo legible y finca cuando aplica. | Mostrar `description` directamente y escapar como texto. | Mismo campo `description`; las entradas históricas no se reescriben. |
+| Diferencias anterior/nuevo | Implementado: snapshots nuevos agregan `display.fields` y `display.summary`, conservando las claves técnicas. | Mostrar el resumen y las parejas «Antes» / «Después»; tolerar que entradas antiguas no tengan `display`. | Aditivo dentro de `old_values` y `new_values`; sin migración. |
+| `detail` estructurado | Propuesta futura para actor/objetivo/cambios normalizados. | Propuesta futura. | No forma parte de la respuesta actual. |
 
-> **Estado del contrato:** esta guía documenta los campos actualmente
-> devueltos y propone los nuevos campos. `origin` y `detail` son propuestas y
-> no forman parte del contrato implementado hasta que se realicen los cambios
-> de backend y frontend descritos arriba.
+> **Estado del contrato:** `description` y la sección `display` de snapshots
+> están implementados en el backend para eventos nuevos generados por señales.
+> `origin` y `detail` siguen siendo propuestas no implementadas.
