@@ -266,6 +266,94 @@ class AccountAuthenticationTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.name, "Self service")
 
+    def test_user_can_read_their_effective_permissions_for_a_farm(self):
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="fish_health",
+            can_view=True,
+            can_create=False,
+            can_update=True,
+            can_delete=False,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="species_catalog",
+            can_view=True,
+            can_create=True,
+            can_update=False,
+            can_delete=False,
+        )
+
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            {
+                "user_id": self.user.pk,
+                "modules": [
+                    {"module": "fish_health", "permissions": ["update", "view"]},
+                    {
+                        "module": "species_catalog",
+                        "permissions": ["create", "view"],
+                    },
+                ],
+            },
+        )
+
+    def test_user_with_no_farm_permissions_gets_an_empty_module_list(self):
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user_id"], self.user.pk)
+        self.assertEqual(response.data["modules"], [])
+
+    def test_farm_permissions_endpoint_requires_authentication(self):
+        response = APIClient().get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_farm_permissions_endpoint_rejects_user_id_injection(self):
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="test-password",
+            role=self.role,
+            is_profile_complete=True,
+        )
+        other_role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Other user's role",
+        )
+        UserFarm.objects.create(
+            user=other_user,
+            farm=self.farm,
+            farm_role=other_role,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=other_role,
+            module="species_catalog",
+            can_view=True,
+            can_create=False,
+            can_update=False,
+            can_delete=False,
+        )
+
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk, "user_id": other_user.pk},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_temporary_password_user_can_complete_their_own_profile(self):
         invited_user = User.objects.create_user(
             email="invited@example.com",
