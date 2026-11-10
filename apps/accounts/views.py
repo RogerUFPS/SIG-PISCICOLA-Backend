@@ -4,11 +4,12 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -17,11 +18,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .authentication import SessionTokenRefreshSerializer
 from .models import Invitation, User, UserSession
 from .permissions import AdminOr, IsAdmin, IsAdminOrValid, IsProductor
+from apps.farms.models import Farm, UserFarm
 from apps.farms.permissions import CanManageFarmUsers
+from apps.farms.utils import get_all_farm_permissions, get_effective_permissions
 from .serializers import (ChangePasswordSerializer, CompleteProfileSerializer,
                           ConfirmResetPasswordSerializer, InvitationSerializer,
                           InviteOperarioSerializer, InviteProductorSerializer,
                           LoginSerializer, OperarioSerializer,
+                          UserFarmPermissionsQuerySerializer,
                           ResetPasswordSerializer, UserProfileSerializer)
 from .utils import (accept_invitation, change_user_password, invite_operario,
                     invite_productor, send_reset_password_email)
@@ -276,6 +280,55 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class UserFarmPermissionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if "user_id" in request.query_params:
+            raise ValidationError(
+                {"user_id": "Los permisos solo se consultan para el usuario autenticado."}
+            )
+
+        query = UserFarmPermissionsQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        farm = get_object_or_404(
+            Farm.objects.filter(deleted_at__isnull=True),
+            pk=query.validated_data["farm_id"],
+        )
+
+        if getattr(getattr(request.user, "role", None), "name", None) == "Admin":
+            effective_permissions = get_all_farm_permissions()
+        else:
+            membership = (
+                UserFarm.objects.filter(user=request.user, farm=farm)
+                .select_related("farm_role")
+                .first()
+            )
+            if (
+                membership is None
+                or (
+                    membership.status != UserFarm.Status.ACTIVE
+                    and not membership.is_owner
+                )
+            ):
+                raise NotFound()
+            effective_permissions = get_effective_permissions(membership)
+
+        modules = {}
+        for grant in effective_permissions:
+            modules.setdefault(grant["module"], []).append(grant["operation"])
+
+        return Response(
+            {
+                "user_id": request.user.pk,
+                "modules": [
+                    {"module": module, "permissions": sorted(operations)}
+                    for module, operations in sorted(modules.items())
+                ],
+            }
+        )
 
 
 class ResetPasswordView(APIView):

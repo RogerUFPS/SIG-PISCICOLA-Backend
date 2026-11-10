@@ -1,16 +1,21 @@
 from .models import FarmRole, FarmRoleAppPermission, UserFarm
 
 
-def get_effective_permissions(user_farm: UserFarm) -> list[dict[str, str]]:
+def get_all_farm_permissions() -> list[dict[str, str]]:
     from .modules import MODULES, OPERATIONS
 
+    return [
+        {"module": module, "operation": operation}
+        for module in sorted(MODULES)
+        for operation in OPERATIONS
+        if module not in ("alerts", "audit_logs") or operation == "view"
+    ]
+
+
+def get_effective_permissions(user_farm: UserFarm) -> list[dict[str, str]]:
     if user_farm.is_owner:
-        return [
-            {"module": module, "operation": operation}
-            for module in sorted(MODULES)
-            for operation in OPERATIONS
-            if module not in ("alerts", "audit_logs") or operation == "view"
-        ]
+        return get_all_farm_permissions()
+
     grants = set(
         user_farm.personal_permissions.values_list("module", "operation")
     )

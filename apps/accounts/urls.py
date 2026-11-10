@@ -6,6 +6,7 @@ from .views import (AcceptInvitationView, AdminListView, ChangePasswordView,
                     InviteOperarioView, InviteProductorView, LoginView,
                     LogoutView, ProductorListView, ProductorOperarioListView,
                     ProfileView, RejectInvitationView, ResetPasswordView,
+                    UserFarmPermissionsView,
                     SessionTokenRefreshView)
 
 urlpatterns = [
@@ -27,6 +28,7 @@ urlpatterns = [
         ProductorOperarioListView.as_view(),
     ),
     path("users/me/", ProfileView.as_view()),
+    path("users/me/permissions/", UserFarmPermissionsView.as_view()),
     path("users/me/complete/", CompleteProfileView.as_view()),
     # Invitaciones - envío
     path("invitations/productor/", InviteProductorView.as_view()),

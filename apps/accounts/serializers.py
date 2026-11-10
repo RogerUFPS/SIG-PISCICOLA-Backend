@@ -141,6 +141,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["cc", "email", "created_at"]
 
 
+class UserFarmPermissionsQuerySerializer(serializers.Serializer):
+    farm_id = serializers.IntegerField(min_value=1)
+
+
 class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 

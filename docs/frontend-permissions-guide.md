@@ -272,6 +272,30 @@ The authenticated user can read or update only their own profile with
 a farm role or a `user_administration` grant; the endpoint always resolves the
 target user from the authenticated token and does not accept a target user ID.
 
+### `GET users/me/permissions/?farm_id={farm_id}`
+
+Returns the authenticated user's effective permissions for one farm. The
+request requires an active membership in that farm unless the caller is the
+farm owner or has a global `Admin` role.
+The farm ID is required because module permissions are farm-scoped; the
+endpoint never accepts a user ID. A member with no role or personalized grants
+receives `200 OK` with an empty `modules` array:
+
+```json
+{
+  "user_id": 27,
+  "modules": [
+    {"module": "fish_health", "permissions": ["update", "view"]},
+    {"module": "inventory_products", "permissions": ["create"]}
+  ]
+}
+```
+
+An unauthenticated request returns `401 Unauthorized`. A farm the user cannot
+access returns `404 Not Found`. Farm owners and global `Admin` users receive
+all farm modules and operations permitted by the existing administrative
+bypass.
+
 ### `GET invitations/?farm_id={farm_id}`
 
 Requires `user_administration.view`, or farm-owner/`Admin` access. Lists
