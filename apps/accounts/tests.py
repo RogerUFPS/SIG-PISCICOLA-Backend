@@ -1,0 +1,439 @@
+from datetime import timedelta
+from importlib import import_module
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from django.apps import apps as django_apps
+from django.db import connection
+from django.test import TestCase, override_settings
+from django.utils import timezone
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.test import APIClient, APIRequestFactory
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+
+from apps.farms.models import (
+    City,
+    Department,
+    Farm,
+    FarmRole,
+    FarmRoleAppPermission,
+    UserFarm,
+)
+
+from .authentication import SessionJWTAuthentication
+from .models import Role, User, UserSession
+from .permissions import AppPermission
+from .views import get_tokens_for_user
+
+
+class SpeciesView:
+    __module__ = "apps.species.views"
+
+    def __init__(self, farm_id):
+        self.kwargs = {"farm_pk": farm_id}
+
+
+class AccountAuthenticationTests(TestCase):
+    def setUp(self):
+        self.role = Role.objects.create(name="Operario")
+        self.user = User.objects.create_user(
+            email="operario@example.com",
+            password="secure-password",
+            role=self.role,
+            is_profile_complete=True,
+        )
+        department = Department.objects.create(name="Test Department")
+        city = City.objects.create(name="Test City", department=department)
+        farm = Farm.objects.create(
+            name="Test Farm",
+            department=department,
+            city=city,
+            address="Test",
+            total_area_ha=1,
+        )
+        farm_role = FarmRole.objects.create(
+            farm=farm,
+            name="Consulta",
+        )
+        UserFarm.objects.create(
+            user=self.user,
+            farm=farm,
+            farm_role=farm_role,
+            is_owner=False,
+        )
+        self.farm = farm
+        self.farm_role = farm_role
+        self.tokens = get_tokens_for_user(self.user)
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {self.tokens['access']}"
+        )
+
+    def test_authenticated_activity_extends_idle_timeout(self):
+        session = UserSession.objects.get(user=self.user)
+        original_expiry = session.expires_at
+        session.last_activity = timezone.now() - timedelta(minutes=14)
+        session.save(update_fields=["last_activity"])
+
+        request = APIRequestFactory().get("/api/species/")
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {self.tokens['access']}"
+        authenticated_user, _ = SessionJWTAuthentication().authenticate(request)
+
+        self.assertEqual(authenticated_user, self.user)
+        session.refresh_from_db()
+        self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
+        self.assertGreater(session.expires_at, original_expiry)
+        self.assertLessEqual(
+            session.expires_at,
+            timezone.now() + timedelta(minutes=15),
+        )
+
+    def test_activity_keeps_session_alive_past_initial_expiration(self):
+        session = UserSession.objects.get(user=self.user)
+        now = timezone.now()
+        session.last_activity = now - timedelta(minutes=1)
+        session.expires_at = now - timedelta(seconds=1)
+        session.save(update_fields=["last_activity", "expires_at"])
+
+        request = APIRequestFactory().get("/api/species/")
+        request.META["HTTP_AUTHORIZATION"] = "Bearer " + self.tokens["access"]
+        authenticated_user, _ = SessionJWTAuthentication().authenticate(request)
+
+        self.assertEqual(authenticated_user, self.user)
+        session.refresh_from_db()
+        self.assertIsNone(session.revoked_at)
+        self.assertGreater(session.expires_at, now + timedelta(minutes=14))
+        token = AccessToken(self.tokens["access"])
+        self.assertGreater(
+            token["exp"],
+            int((now + timedelta(minutes=15)).timestamp()),
+        )
+
+    def test_idle_session_is_rejected_and_revoked(self):
+        session = UserSession.objects.get(user=self.user)
+        session.last_activity = timezone.now() - timedelta(minutes=16)
+        session.save(update_fields=["last_activity"])
+
+        request = APIRequestFactory().get("/api/species/")
+        request.META["HTTP_AUTHORIZATION"] = f"Bearer {self.tokens['access']}"
+        with self.assertRaises(AuthenticationFailed):
+            SessionJWTAuthentication().authenticate(request)
+
+        session.refresh_from_db()
+        self.assertIsNotNone(session.revoked_at)
+
+    def test_logout_revokes_access_and_refresh_tokens(self):
+        client = APIClient()
+        response = client.post(
+            "/api/auth/logout/",
+            {"refresh": self.tokens["refresh"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 204)
+        session = UserSession.objects.get(user=self.user)
+        self.assertIsNotNone(session.revoked_at)
+        with self.assertRaises(TokenError):
+            RefreshToken(self.tokens["refresh"])
+
+    def test_login_replaces_the_existing_session_for_the_account(self):
+        self.user.set_password("test-password")
+        self.user.save(update_fields=["password"])
+        previous_session = UserSession.objects.get(user=self.user)
+        login_started_at = timezone.now()
+
+        response = APIClient().post(
+            "/api/auth/login/",
+            {"email": self.user.email, "password": "test-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        previous_session.refresh_from_db()
+        self.assertIsNotNone(previous_session.revoked_at)
+        current_session = UserSession.objects.get(
+            user=self.user,
+            revoked_at__isnull=True,
+        )
+        self.assertNotEqual(current_session.pk, previous_session.pk)
+        self.assertGreater(
+            current_session.expires_at,
+            login_started_at + timedelta(minutes=14),
+        )
+        self.assertEqual(
+            UserSession.objects.filter(
+                user=self.user,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            ).count(),
+            1,
+        )
+        self.assertLessEqual(
+            current_session.expires_at,
+            timezone.now() + timedelta(minutes=15),
+        )
+        old_refresh_response = APIClient().post(
+            "/api/auth/token/refresh/",
+            {"refresh": self.tokens["refresh"]},
+            format="json",
+        )
+        self.assertEqual(old_refresh_response.status_code, 400)
+
+    def test_failed_login_does_not_revoke_the_existing_session(self):
+        session = UserSession.objects.get(user=self.user)
+        response = APIClient().post(
+            "/api/auth/login/",
+            {"email": self.user.email, "password": "incorrect-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        session.refresh_from_db()
+        self.assertIsNone(session.revoked_at)
+
+    def test_existing_sessions_are_revoked_by_deployment_migration(self):
+        migration = import_module(
+            "apps.accounts.migrations.0007_revoke_existing_active_sessions"
+        )
+
+        migration.revoke_existing_active_sessions(
+            django_apps,
+            SimpleNamespace(connection=connection),
+        )
+
+        session = UserSession.objects.get(user=self.user)
+        self.assertIsNotNone(session.revoked_at)
+
+    def test_refresh_activity_extends_session_and_rotates_tokens(self):
+        session = UserSession.objects.get(user=self.user)
+        session.last_activity = timezone.now() - timedelta(minutes=14)
+        session.save(update_fields=["last_activity"])
+
+        response = APIClient().post(
+            "/api/auth/token/refresh/",
+            {"refresh": self.tokens["refresh"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
+        session.refresh_from_db()
+        self.assertGreater(session.last_activity, timezone.now() - timedelta(minutes=1))
+        self.assertGreater(session.expires_at, timezone.now() + timedelta(minutes=14))
+
+    def test_role_app_permissions_apply_to_each_request(self):
+        request = APIRequestFactory().get("/api/species/")
+        request.user = self.user
+        view = SpeciesView(self.farm.pk)
+        self.assertFalse(AppPermission().has_permission(request, view))
+
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="species_catalog",
+            can_view=True,
+            can_create=False,
+            can_update=True,
+            can_delete=False,
+        )
+        self.assertTrue(AppPermission().has_permission(request, view))
+
+        request.method = "POST"
+        self.assertFalse(AppPermission().has_permission(request, view))
+
+        FarmRoleAppPermission.objects.filter(
+            role=self.farm_role, module="species_catalog"
+        ).update(
+            can_create=True
+        )
+        self.assertTrue(AppPermission().has_permission(request, view))
+
+    def test_user_can_read_and_update_their_own_profile_without_role_grants(self):
+        response = self.client.get("/api/users/me/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], self.user.pk)
+
+        response = self.client.patch(
+            "/api/users/me/",
+            {"name": "Self service"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["id"], self.user.pk)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.name, "Self service")
+
+    def test_user_can_read_their_effective_permissions_for_a_farm(self):
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="fish_health",
+            can_view=True,
+            can_create=False,
+            can_update=True,
+            can_delete=False,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="species_catalog",
+            can_view=True,
+            can_create=True,
+            can_update=False,
+            can_delete=False,
+        )
+
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            {
+                "user_id": self.user.pk,
+                "modules": [
+                    {"module": "fish_health", "permissions": ["update", "view"]},
+                    {
+                        "module": "species_catalog",
+                        "permissions": ["create", "view"],
+                    },
+                ],
+            },
+        )
+
+    def test_user_with_no_farm_permissions_gets_an_empty_module_list(self):
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["user_id"], self.user.pk)
+        self.assertEqual(response.data["modules"], [])
+
+    def test_farm_permissions_endpoint_requires_authentication(self):
+        response = APIClient().get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_farm_permissions_endpoint_rejects_user_id_injection(self):
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="test-password",
+            role=self.role,
+            is_profile_complete=True,
+        )
+        other_role = FarmRole.objects.create(
+            farm=self.farm,
+            name="Other user's role",
+        )
+        UserFarm.objects.create(
+            user=other_user,
+            farm=self.farm,
+            farm_role=other_role,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=other_role,
+            module="species_catalog",
+            can_view=True,
+            can_create=False,
+            can_update=False,
+            can_delete=False,
+        )
+
+        response = self.client.get(
+            "/api/users/me/permissions/",
+            {"farm_id": self.farm.pk, "user_id": other_user.pk},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_temporary_password_user_can_complete_their_own_profile(self):
+        invited_user = User.objects.create_user(
+            email="invited@example.com",
+            password="temporary-password",
+            role=self.role,
+            is_temp_password=True,
+            is_profile_complete=False,
+        )
+        tokens = get_tokens_for_user(invited_user)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+        response = client.post(
+            "/api/users/me/complete/",
+            {
+                "name": "Invited",
+                "lastname": "User",
+                "cc": "123456789",
+                "phone": "3000000000",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        invited_user.refresh_from_db()
+        self.assertTrue(invited_user.is_profile_complete)
+        self.assertTrue(invited_user.is_temp_password)
+
+    def test_user_cannot_choose_another_users_profile(self):
+        other_user = User.objects.create_user(
+            email="other@example.com",
+            password="test-password",
+            role=self.role,
+            is_profile_complete=True,
+        )
+
+        response = self.client.get(f"/api/users/{other_user.pk}/")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_permissions_from_one_farm_do_not_apply_to_another(self):
+        department = self.farm.department
+        city = self.farm.city
+        other_farm = Farm.objects.create(
+            name="Other Farm",
+            department=department,
+            city=city,
+            address="Other",
+            total_area_ha=1,
+        )
+        other_role = FarmRole.objects.create(
+            farm=other_farm,
+            name="Sin permisos de especies",
+        )
+        UserFarm.objects.create(
+            user=self.user,
+            farm=other_farm,
+            farm_role=other_role,
+        )
+        FarmRoleAppPermission.objects.create(
+            role=self.farm_role,
+            module="species_catalog",
+            can_view=True,
+        )
+        request = APIRequestFactory().get("/api/species/")
+        request.user = self.user
+
+        self.assertFalse(
+            AppPermission().has_permission(request, SpeciesView(other_farm.pk))
+        )
+
+    @override_settings(HOST_URL="https://sig-piscicola-frontend.vercel.app/")
+    @patch("apps.accounts.utils.send_email")
+    def test_password_reset_link_uses_frontend_domain(self, send_email):
+        from .utils import send_reset_password_email
+
+        send_reset_password_email("user@example.com", "uid", "token")
+
+        html = send_email.call_args.args[2]
+        self.assertIn(
+            "https://sig-piscicola-frontend.vercel.app/resetPassword/?uid=uid&token=token",
+            html,
+        )

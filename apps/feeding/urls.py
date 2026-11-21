@@ -1,0 +1,72 @@
+from django.urls import path
+
+from .views import (
+    CycleFeedingEventDetailView,
+    CycleFeedingEventListView,
+    CycleFeedingPlanDetailView,
+    CycleFeedingPlanListCreateView,
+    FarmFeedingSchedulePlanDetailView,
+    FarmFeedingSchedulePlanEventDetailView,
+    FarmFeedingSchedulePlanEventListView,
+    FarmFeedingSchedulePlansListView,
+    FeedingOptionsView,
+    FeedingPlanOccupiedRangesView,
+    FeedingScheduleDetailView,
+    FeedingScheduleListCreateView,
+    FeedingScheduleVersionsListView,
+)
+
+urlpatterns = [
+    path(
+        "feeding/options/",
+        FeedingOptionsView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/",
+        FeedingScheduleListCreateView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/versions/",
+        FeedingScheduleVersionsListView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/feeding-plans/",
+        FarmFeedingSchedulePlansListView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/feeding-plans/<int:plan_id>/feeding-events/",
+        FarmFeedingSchedulePlanEventListView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/feeding-plans/<int:plan_id>/feeding-events/<int:event_id>/",
+        FarmFeedingSchedulePlanEventDetailView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/feeding-plans/<int:plan_id>/",
+        FarmFeedingSchedulePlanDetailView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/feeding-schedules/<int:schedule_id>/",
+        FeedingScheduleDetailView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/ponds/<int:pond_id>/cycles/<int:cycle_id>/feeding-plans/occupied-ranges/",
+        FeedingPlanOccupiedRangesView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/ponds/<int:pond_id>/cycles/<int:cycle_id>/feeding-plans/",
+        CycleFeedingPlanListCreateView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/ponds/<int:pond_id>/cycles/<int:cycle_id>/feeding-plans/<int:plan_id>/",
+        CycleFeedingPlanDetailView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/ponds/<int:pond_id>/cycles/<int:cycle_id>/feeding-plans/<int:plan_id>/feeding-events/",
+        CycleFeedingEventListView.as_view(),
+    ),
+    path(
+        "farms/<int:farm_id>/ponds/<int:pond_id>/cycles/<int:cycle_id>/feeding-plans/<int:plan_id>/feeding-events/<int:event_id>/",
+        CycleFeedingEventDetailView.as_view(),
+    ),
+]
