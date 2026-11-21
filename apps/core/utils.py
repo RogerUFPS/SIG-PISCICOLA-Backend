@@ -51,6 +51,7 @@ def ensure_overdue_events_alerts(farm_id: int) -> None:
     from datetime import date
 
     from apps.feeding.models import FeedingEvent
+    from apps.cycle.models import Cycle
 
     try:
         from apps.health.models import TreatmentEvent
@@ -58,6 +59,47 @@ def ensure_overdue_events_alerts(farm_id: int) -> None:
         TreatmentEvent = None
 
     today = date.today()
+
+    # Fecha estimada vencida: es informativa y nunca bloquea el ciclo.
+    overdue_cycles = Cycle.objects.filter(
+        farm_id=farm_id,
+        deleted_at__isnull=True,
+        state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
+        estimated_finish_date__lte=today,
+    ).select_related("farm", "pond")
+    overdue_cycle_ids = list(overdue_cycles.values_list("id", flat=True))
+
+    for cycle in overdue_cycles:
+        create_alert(
+            farm=cycle.farm,
+            pond=cycle.pond,
+            cycle=cycle,
+            source_type=Alert.SourceType.CYCLE,
+            source_id=cycle.id,
+            description=f"Fecha estimada alcanzada para el ciclo {cycle.name}",
+            message=(
+                f"El ciclo alcanzó su fecha estimada de finalización "
+                f"({cycle.estimated_finish_date}) y continúa en proceso."
+            ),
+            severity=Alert.Severity.MEDIUM,
+        )
+
+    stale_cycle_alerts = Alert.objects.filter(
+        farm_id=farm_id,
+        source_type=Alert.SourceType.CYCLE,
+        is_resolved=False,
+    )
+    if overdue_cycle_ids:
+        stale_cycle_alerts = stale_cycle_alerts.exclude(
+            source_id__in=overdue_cycle_ids
+        )
+    from apps.core.signals import audit_queryset_update
+
+    audit_queryset_update(
+        stale_cycle_alerts,
+        is_resolved=True,
+        resolved_at=timezone.now(),
+    )
 
     # Feeding overdue
     feeding_qs = FeedingEvent.objects.filter(

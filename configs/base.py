@@ -68,9 +68,10 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Tu API",
-    "DESCRIPTION": "Descripción de tu proyecto",
+    "TITLE": "API SIG-Piscicola",
+    "DESCRIPTION": "API de gestión productiva del proyecto Póngase Trucha.",
     "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
 }
 
 TEMPLATES = [

@@ -33,6 +33,21 @@ urlpatterns = [
         name="batch-set-status",
     ),
     path(
+        "farms/<int:farm_pk>/batches/<int:pk>/split/",
+        BatchViewSet.as_view({"post": "split"}),
+        name="batch-split",
+    ),
+    path(
+        "farms/<int:farm_pk>/batches/<int:pk>/cycles/",
+        BatchViewSet.as_view({"get": "cycles"}),
+        name="batch-cycle-list",
+    ),
+    path(
+        "farms/<int:farm_pk>/batches/<int:pk>/traceability/",
+        BatchViewSet.as_view({"get": "traceability"}),
+        name="batch-traceability",
+    ),
+    path(
         "farms/<int:farm_pk>/batches/<int:batch_pk>/production-report/",
         BatchProductionReportView.as_view(),
         name="batch-production-report",

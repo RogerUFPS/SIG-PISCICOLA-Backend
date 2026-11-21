@@ -25,6 +25,7 @@ def _specie_not_found_response():
 
 
 class SpecieListCreateView(APIView):
+    serializer_class = SpecieSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request):
@@ -39,6 +40,7 @@ class SpecieListCreateView(APIView):
 
 
 class SpecieDetailView(APIView):
+    serializer_class = SpecieSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request, specie_id):
@@ -65,6 +67,7 @@ class SpecieDetailView(APIView):
 
 
 class SpeciePondTypeListCreateView(APIView):
+    serializer_class = SpeciePondTypeSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request, specie_id):
@@ -90,6 +93,7 @@ class SpeciePondTypeListCreateView(APIView):
 
 
 class SpeciePondTypeDetailView(APIView):
+    serializer_class = SpeciePondTypeSerializer
     permission_classes = [SpeciePermission]
 
     def _get_object(self, specie, pond_type_id):
@@ -133,6 +137,7 @@ class SpeciePondTypeDetailView(APIView):
 
 
 class SpecieParameterListCreateView(APIView):
+    serializer_class = SpecieParameterSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request, specie_id):
@@ -158,6 +163,7 @@ class SpecieParameterListCreateView(APIView):
 
 
 class SpecieParameterDetailView(APIView):
+    serializer_class = SpecieParameterSerializer
     permission_classes = [SpeciePermission]
 
     def _get_object(self, specie, parameter_id):
@@ -199,6 +205,7 @@ class SpecieParameterDetailView(APIView):
 
 
 class SpecieFeedingReferenceListCreateView(APIView):
+    serializer_class = SpecieFeedingReferenceSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request, specie_id):
@@ -229,6 +236,7 @@ class SpecieFeedingReferenceListCreateView(APIView):
 
 
 class SpecieFeedingReferenceDetailView(APIView):
+    serializer_class = SpecieFeedingReferenceSerializer
     permission_classes = [SpeciePermission]
 
     def _get_object(self, specie, ref_id):
@@ -270,6 +278,7 @@ class SpecieFeedingReferenceDetailView(APIView):
 
 
 class SpecieProductionReferenceListCreateView(APIView):
+    serializer_class = SpecieProductionReferenceSerializer
     permission_classes = [SpeciePermission]
 
     def get(self, request, specie_id):
@@ -295,6 +304,7 @@ class SpecieProductionReferenceListCreateView(APIView):
 
 
 class SpecieProductionReferenceDetailView(APIView):
+    serializer_class = SpecieProductionReferenceSerializer
     permission_classes = [SpeciePermission]
 
     def _get_object(self, specie, ref_id):

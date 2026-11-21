@@ -135,6 +135,7 @@ class Alert(models.Model):
         CONTROL = "Control", "Control"
         FEEDING = "Feeding", "Alimentación"
         SALE = "Sale", "Venta"
+        CYCLE = "Cycle", "Ciclo"
 
     class Severity(models.TextChoices):
         LOW = "low", "Baja"

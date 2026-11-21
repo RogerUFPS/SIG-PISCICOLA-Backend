@@ -11,6 +11,7 @@ from .models import Pond, UserFarmPond
 from .serializers import PondSerializer, UserFarmPondSerializer
 from .utils import (
     get_pond_or_404,
+    pond_has_active_cycle,
     pond_has_cycles,
     remove_pond_member,
     soft_delete_pond,
@@ -38,6 +39,7 @@ def _pond_not_found_response():
 
 
 class PondListCreateView(APIView):
+    serializer_class = PondSerializer
 
     def get_permissions(self):
         if self.request.method == "POST":
@@ -67,6 +69,7 @@ class PondListCreateView(APIView):
 
 
 class PondAllowedListView(APIView):
+    serializer_class = PondSerializer
 
     def get_permissions(self):
         return [AdminOr(IsFarmMember)()]
@@ -85,6 +88,7 @@ class PondAllowedListView(APIView):
 
 
 class PondDetailView(APIView):
+    serializer_class = PondSerializer
 
     def get_permissions(self):
         if self.request.method in ("PATCH", "DELETE"):
@@ -142,6 +146,7 @@ class PondDetailView(APIView):
 
 
 class PondMemberListView(APIView):
+    serializer_class = UserFarmPondSerializer
 
     def get_permissions(self):
         return [AdminOr(CanManageFarmUsers)()]
@@ -158,6 +163,7 @@ class PondMemberListView(APIView):
 
 
 class PondMemberDetailView(APIView):
+    serializer_class = UserFarmPondSerializer
 
     def get_permissions(self):
         return [AdminOr(CanManageFarmUsers)()]
@@ -223,6 +229,7 @@ class PondMemberDetailView(APIView):
 
 
 class PondInactivateView(APIView):
+    serializer_class = PondSerializer
 
     def get_permissions(self):
         return [AdminOr(CanManagePond)()]
@@ -236,10 +243,10 @@ class PondInactivateView(APIView):
         if not pond:
             return _pond_not_found_response()
 
-        if pond_has_cycles(pond):
+        if pond_has_active_cycle(pond):
             return Response(
                 {
-                    "detail": "No se puede inactivar un estanque que tiene ciclos asociados."
+                    "detail": "No se puede inactivar un estanque que tiene un ciclo en proceso."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -250,6 +257,7 @@ class PondInactivateView(APIView):
 
 
 class PondActivateView(APIView):
+    serializer_class = PondSerializer
 
     def get_permissions(self):
         return [AdminOr(CanManagePond)()]
@@ -262,6 +270,14 @@ class PondActivateView(APIView):
         pond = get_pond_or_404(farm, pond_id)
         if not pond:
             return _pond_not_found_response()
+
+        if pond_has_active_cycle(pond):
+            return Response(
+                {
+                    "detail": "No se puede cambiar el estado de un estanque que tiene un ciclo en proceso."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         pond.status = Pond.Status.ACTIVE
         pond.save(update_fields=["status"])

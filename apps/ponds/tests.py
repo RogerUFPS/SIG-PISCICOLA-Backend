@@ -58,13 +58,13 @@ class PondLifecycleProtectionTests(SimpleTestCase):
 
         cycle_filter.assert_called_once_with(pond=pond, deleted_at__isnull=True)
 
-    def test_inactivation_endpoint_rejects_pond_with_cycles(self):
+    def test_inactivation_endpoint_rejects_pond_with_active_cycle(self):
         pond = Pond(status=Pond.Status.ACTIVE)
         request = object()
 
         with patch("apps.ponds.views._get_farm", return_value=object()), patch(
             "apps.ponds.views.get_pond_or_404", return_value=pond
-        ), patch("apps.ponds.views.pond_has_cycles", return_value=True):
+        ), patch("apps.ponds.views.pond_has_active_cycle", return_value=True):
             response = PondInactivateView().patch(request, 1, 2)
 
         self.assertEqual(response.status_code, 400)

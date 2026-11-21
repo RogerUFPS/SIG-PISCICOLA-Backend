@@ -63,6 +63,7 @@ def _edit_window_payload(reference_dt) -> dict:
 
 
 class ClientListCreateView(APIView):
+    serializer_class = ClientCreateSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int) -> Response:
@@ -91,6 +92,7 @@ class ClientListCreateView(APIView):
 
 
 class ClientRetrieveUpdateDestroyView(APIView):
+    serializer_class = ClientDetailSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -111,6 +113,7 @@ class ClientRetrieveUpdateDestroyView(APIView):
 
 
 class ClientCanDeleteView(APIView):
+    serializer_class = ClientDetailSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -129,6 +132,7 @@ class ClientCanDeleteView(APIView):
 
 
 class SaleListView(APIView):
+    serializer_class = SaleListSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int) -> Response:
@@ -151,6 +155,7 @@ class SaleListView(APIView):
 
 
 class FullSaleCreateView(APIView):
+    serializer_class = SaleCreateSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def post(self, request: Request, farm_pk: int) -> Response:
@@ -205,6 +210,7 @@ class FullSaleCreateView(APIView):
 
 
 class SaleRetrieveView(APIView):
+    serializer_class = SaleDetailSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -213,6 +219,7 @@ class SaleRetrieveView(APIView):
 
 
 class SaleEditView(APIView):
+    serializer_class = SaleUpdateSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def patch(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -224,6 +231,7 @@ class SaleEditView(APIView):
 
 
 class SaleObservationsView(APIView):
+    serializer_class = SaleUpdateSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def patch(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -244,6 +252,7 @@ class SaleObservationsView(APIView):
 
 
 class SaleCanEditView(APIView):
+    serializer_class = SaleDetailSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -252,6 +261,7 @@ class SaleCanEditView(APIView):
 
 
 class SalesByClientView(APIView):
+    serializer_class = SaleListSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, client_id: int) -> Response:
@@ -261,6 +271,7 @@ class SalesByClientView(APIView):
 
 
 class SalesByHarvestClassificationView(APIView):
+    serializer_class = SaleDetailSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, hc_id: int) -> Response:
@@ -270,6 +281,7 @@ class SalesByHarvestClassificationView(APIView):
 
 
 class SaleDetailsBySaleView(APIView):
+    serializer_class = SaleDetailListSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, sale_id: int) -> Response:
@@ -279,6 +291,7 @@ class SaleDetailsBySaleView(APIView):
 
 
 class SaleDetailEditView(APIView):
+    serializer_class = SaleDetailUpdateSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def patch(self, request: Request, farm_pk: int, pk: int) -> Response:
@@ -292,6 +305,7 @@ class SaleDetailEditView(APIView):
 
 
 class SaleDetailCanEditView(APIView):
+    serializer_class = SaleDetailListSerializer
     permission_classes = [AdminOr(CanManageInventory)]
 
     def get(self, request: Request, farm_pk: int, pk: int) -> Response:

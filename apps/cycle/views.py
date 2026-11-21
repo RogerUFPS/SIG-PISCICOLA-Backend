@@ -93,6 +93,17 @@ class CycleViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         cycle = self.get_object()
+
+        if cycle.state in (Cycle.State.IN_PROGRESS, Cycle.State.PAUSED):
+            return Response(
+                {
+                    "detail": (
+                        "No se puede eliminar un ciclo en proceso. Debe concluir "
+                        "mediante su flujo productivo para conservar la trazabilidad."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
         # Verificar si hay lotes activos vinculados al ciclo
         active_batches = CyclePondBatch.objects.filter(
@@ -215,3 +226,14 @@ class CyclePondBatchViewSet(viewsets.ModelViewSet):
         
         # La validación de que pond_batch.pond == cycle.pond se ejecutará en el clean() del modelo
         serializer.save(cycle=cycle)
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": (
+                    "No se puede desvincular manualmente un lote del ciclo. "
+                    "La asignación forma parte de la trazabilidad productiva."
+                )
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )

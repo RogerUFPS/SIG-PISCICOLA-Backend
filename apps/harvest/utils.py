@@ -273,11 +273,6 @@ def _validate_cycle_finish_date(cycle, finish_date) -> None:
             f"La fecha de fin ({finish_date}) no puede ser anterior al inicio del ciclo "
             f"({cycle.start_date})."
         )
-    if finish_date > cycle.estimated_finish_date:
-        raise ValueError(
-            f"La fecha de fin ({finish_date}) no puede ser posterior a la fecha estimada "
-            f"del ciclo ({cycle.estimated_finish_date})."
-        )
 
 
 def finish_cycle_from_harvest(cycle, finish_date) -> None:

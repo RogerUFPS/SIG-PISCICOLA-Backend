@@ -22,6 +22,7 @@ from .constants import (
     MODULE_SALES,
 )
 from .indicators import collect_productivity_indicators
+from apps.batch.services.traceability import collect_batch_traceability
 
 
 def _serialize_batch(batch: Batch) -> dict:
@@ -412,4 +413,5 @@ def collect_production_report_data(
         "generated_at": timezone.now().isoformat(),
         "generated_by": user_display,
         "cycle_id": cycle_id,
+        "traceability": collect_batch_traceability(batch),
     }

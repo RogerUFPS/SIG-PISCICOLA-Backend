@@ -552,10 +552,6 @@ def collect_treatment_plan_business_errors(
         errors["start_date"] = (
             "El inicio del plan no puede ser anterior al inicio del ciclo."
         )
-    if end_date > cycle.estimated_finish_date:
-        errors["end_date"] = (
-            "La fecha de fin no puede superar la fecha estimada de fin del ciclo."
-        )
     if cycle.finish_date and end_date > cycle.finish_date:
         errors["end_date"] = (
             "La fecha de fin no puede superar la fecha de cierre del ciclo."

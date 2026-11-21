@@ -30,6 +30,15 @@ class Command(BaseCommand):
 
         self.stdout.write("Generating alerts...")
 
+        from apps.core.utils import ensure_overdue_events_alerts
+        from apps.farms.models import Farm
+
+        farm_ids = [farm_id] if farm_id else list(
+            Farm.objects.filter(deleted_at__isnull=True).values_list("id", flat=True)
+        )
+        for current_farm_id in farm_ids:
+            ensure_overdue_events_alerts(current_farm_id)
+
         # 1) Stock low alerts (products)
         products = Product.objects.filter(deleted_at__isnull=True)
         if farm_id:

@@ -157,6 +157,70 @@ def _build_summary_sheet(ws, report_data: dict):
         lc.border    = _border_thin(C_GRAY_LIGHT)
         vc.border    = _border_thin(C_GRAY_LIGHT)
 
+    traceability = report_data.get("traceability", {})
+    _spacer(ws)
+    _write_section_title(ws, "Origen y trazabilidad del lote", C_TEAL_DARK, ncols)
+    _spacer(ws)
+    _write_subheading(ws, "Origen", ncols)
+    _write_table(
+        ws,
+        ["Lote", "Origen", "Fecha", "Proveedor", "Documento", "Factura"],
+        [
+            [
+                item.get("batch_code", "—"),
+                "Compra" if item.get("type") == "purchase" else "Registro inicial",
+                item.get("date", "—"),
+                item.get("supplier") or "—",
+                item.get("supplier_document") or "—",
+                item.get("invoice_number") or "—",
+            ]
+            for item in traceability.get("origins", [])
+        ],
+    )
+    _spacer(ws)
+    _write_subheading(ws, "Genealogía", ncols)
+    _write_table(
+        ws,
+        ["Lote padre", "Lote derivado", "Cantidad"],
+        [
+            [item["parent_code"], item["child_code"], item["quantity"]]
+            for item in traceability.get("genealogy", [])
+        ],
+    )
+    _spacer(ws)
+    _write_subheading(ws, "Movimientos entre estanques", ncols)
+    _write_table(
+        ws,
+        ["Fecha", "Origen", "Destino", "Cantidad", "Motivo"],
+        [
+            [
+                item["date"],
+                item["from_pond"],
+                item["to_pond"],
+                item["quantity"],
+                item["reason"],
+            ]
+            for item in traceability.get("transfers", [])
+        ],
+    )
+    _spacer(ws)
+    _write_subheading(ws, "Crecimiento registrado", ncols)
+    _write_table(
+        ws,
+        ["Fecha", "Ciclo", "Peso mín. (g)", "Peso prom. (g)", "Peso máx. (g)", "Mortalidad"],
+        [
+            [
+                item["date"],
+                item["cycle"],
+                item["min_weight_g"],
+                item["avg_weight_g"],
+                item["max_weight_g"],
+                item["mortality_quantity"],
+            ]
+            for item in traceability.get("growth", [])
+        ],
+    )
+
     # Indicadores de productividad
     _spacer(ws)
     _write_section_title(ws, "Indicadores de productividad", C_TEAL_DARK, ncols)

@@ -137,6 +137,17 @@ class FarmRoleAppPermissionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Alertas y Audit logs solo permiten la operación view."
                 )
+        elif any(
+            attrs.get(
+                f"can_{operation}",
+                getattr(self.instance, f"can_{operation}", False),
+            )
+            for operation in ("create", "update", "delete")
+        ):
+            # Cualquier operación de escritura necesita poder consultar el módulo.
+            # Se normaliza también en Backend para que clientes distintos al
+            # Frontend no puedan persistir permisos funcionalmente incoherentes.
+            attrs["can_view"] = True
         return attrs
 
 

@@ -100,6 +100,7 @@ class HarvestClassificationListView(generics.ListAPIView):
 
 
 class BatchFromClassificationView(APIView):
+    serializer_class = BatchFromClassificationSerializer
     permission_classes = [AdminOr(CanManageCycle)]
 
     def post(self, request, farm_pk, harvest_pk, classification_pk):

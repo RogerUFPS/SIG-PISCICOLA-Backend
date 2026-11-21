@@ -280,18 +280,6 @@ class HarvestSerializer(serializers.ModelSerializer):
                 }
             )
 
-        if date and cycle and total_fish_count is not None:
-            available = _get_available_quantity(cycle)
-            if total_fish_count >= available and date > cycle.estimated_finish_date:
-                raise serializers.ValidationError(
-                    {
-                        "date": (
-                            "La fecha de cosecha no puede ser posterior a la fecha estimada "
-                            f"del ciclo ({cycle.estimated_finish_date}) cuando agota el stock."
-                        )
-                    }
-                )
-
         farm_id = self.context.get("farm_id")
         if farm_id and cycle and cycle.farm_id != int(farm_id):
             raise serializers.ValidationError(

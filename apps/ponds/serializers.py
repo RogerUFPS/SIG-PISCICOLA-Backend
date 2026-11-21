@@ -14,6 +14,9 @@ def area_to_hectares(value):
 
 
 class PondSerializer(serializers.ModelSerializer):
+    has_active_cycle = serializers.SerializerMethodField()
+    resident_profile = serializers.SerializerMethodField()
+
     class Meta:
         model = Pond
         fields = [
@@ -30,14 +33,56 @@ class PondSerializer(serializers.ModelSerializer):
             "description",
             "created_at",
             "updated_at",
+            "has_active_cycle",
+            "resident_profile",
         ]
         read_only_fields = ["farm", "created_at", "updated_at", "code"]
+
+    def get_has_active_cycle(self, obj) -> bool:
+        from apps.cycle.models import Cycle
+
+        return Cycle.objects.filter(
+            pond=obj,
+            deleted_at__isnull=True,
+            state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
+        ).exists()
+
+    def get_resident_profile(self, obj) -> dict | None:
+        """Especie y etapa que pueden convivir actualmente en el estanque."""
+        active_assignments = obj.pondbatch_set.filter(
+            end_date__isnull=True,
+            current_quantity__gt=0,
+            batch__status="active",
+        ).select_related("batch__specie")
+        first = active_assignments.first()
+        if first is None:
+            return None
+        total = active_assignments.aggregate(total=Sum("current_quantity"))["total"] or 0
+        return {
+            "specie_id": first.batch.specie_id,
+            "specie_name": first.batch.specie.name,
+            "biological_state": first.batch.biological_state,
+            "current_quantity": total,
+        }
 
     def validate(self, data):
         farm = self.context["farm"]
         name = data.get("name", getattr(self.instance, "name", None))
         code = data.get("code", getattr(self.instance, "code", None))
         area = data.get("area", getattr(self.instance, "area", None))
+
+        if self.instance:
+            from apps.cycle.models import Cycle
+
+            if Cycle.objects.filter(
+                pond=self.instance,
+                deleted_at__isnull=True,
+                state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
+            ).exists():
+                raise serializers.ValidationError(
+                    "El estanque tiene un ciclo en proceso y no se puede editar ni "
+                    "cambiar de estado manualmente."
+                )
 
         # Validar que no se pueda modificar un estanque inactivo (excepto el status)
         if self.instance and self.instance.status == Pond.Status.INACTIVE:

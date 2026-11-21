@@ -608,6 +608,73 @@ def export_production_report_pdf(report_data: dict) -> bytes:
     }
     story.append(Spacer(1, 0.1 * inch))
 
+    traceability = report_data.get("traceability", {})
+    story.append(
+        _section_heading_box(
+            "Origen y trazabilidad del lote", styles, background_color=TEAL_DARK
+        )
+    )
+    story.append(Spacer(1, 4 * mm))
+
+    origin_rows = [["Lote", "Origen", "Fecha", "Proveedor", "Documento", "Compra/Factura"]]
+    for origin in traceability.get("origins", []):
+        origin_rows.append(
+            [
+                origin.get("batch_code", "—"),
+                "Compra" if origin.get("type") == "purchase" else "Registro inicial",
+                origin.get("date", "—"),
+                origin.get("supplier") or "—",
+                origin.get("supplier_document") or "—",
+                origin.get("invoice_number") or origin.get("purchase_id") or "—",
+            ]
+        )
+    if len(origin_rows) > 1:
+        story.append(_create_table(origin_rows, col_count=6))
+        story.append(Spacer(1, 0.08 * inch))
+
+    genealogy_rows = [["Lote padre", "Lote derivado", "Cantidad"]]
+    for link in traceability.get("genealogy", []):
+        genealogy_rows.append(
+            [link["parent_code"], link["child_code"], link["quantity"]]
+        )
+    if len(genealogy_rows) > 1:
+        story.append(Paragraph("Genealogía", styles["subheading"]))
+        story.append(_create_table(genealogy_rows, col_count=3))
+        story.append(Spacer(1, 0.08 * inch))
+
+    movement_rows = [["Fecha", "Origen", "Destino", "Cantidad", "Motivo"]]
+    for transfer in traceability.get("transfers", []):
+        movement_rows.append(
+            [
+                transfer["date"],
+                transfer["from_pond"],
+                transfer["to_pond"],
+                transfer["quantity"],
+                transfer["reason"],
+            ]
+        )
+    if len(movement_rows) > 1:
+        story.append(Paragraph("Movimientos entre estanques", styles["subheading"]))
+        story.append(_create_table(movement_rows, col_count=5))
+        story.append(Spacer(1, 0.08 * inch))
+
+    growth_rows = [["Fecha", "Ciclo", "Peso mín. (g)", "Peso prom. (g)", "Peso máx. (g)", "Mortalidad"]]
+    for point in traceability.get("growth", []):
+        growth_rows.append(
+            [
+                point["date"],
+                point["cycle"],
+                point["min_weight_g"],
+                point["avg_weight_g"],
+                point["max_weight_g"],
+                point["mortality_quantity"],
+            ]
+        )
+    if len(growth_rows) > 1:
+        story.append(Paragraph("Crecimiento registrado", styles["subheading"]))
+        story.append(_create_table(growth_rows, col_count=6))
+        story.append(Spacer(1, 0.12 * inch))
+
     story.append(_section_heading_box("Indicadores de productividad", styles, background_color=TEAL_DARK))
     story.append(Spacer(1, 4 * mm))
     story.extend(_build_productivity_indicators(report_data.get("productivity_indicators", []), styles))

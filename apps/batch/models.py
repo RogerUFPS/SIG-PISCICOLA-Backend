@@ -5,6 +5,7 @@ class Batch(models.Model):
     class OriginType(models.TextChoices):
         HARVEST_CLASSIFICATION = "harvest_classification", "Harvest Classification"
         PURCHASE_DETAIL = "purchase_detail", "Purchase Detail"
+        BATCH_SPLIT = "batch_split", "Batch Split"
         INITIAL = "initial", "Initial"
 
     class BiologicalState(models.TextChoices):

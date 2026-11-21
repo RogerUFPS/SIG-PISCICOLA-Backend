@@ -463,7 +463,7 @@ class FarmRolePermissionsTests(TestCase):
             [
                 {
                     "module": "fish_health",
-                    "can_view": False,
+                    "can_view": True,
                     "can_create": True,
                     "can_update": False,
                     "can_delete": False,
@@ -484,7 +484,11 @@ class FarmRolePermissionsTests(TestCase):
         }
         self.assertEqual(
             effective,
-            {("fish_health", "create"), ("inventory_products", "create")},
+            {
+                ("fish_health", "view"),
+                ("fish_health", "create"),
+                ("inventory_products", "create"),
+            },
         )
 
     def test_legacy_role_permission_bundle_is_not_accepted(self):

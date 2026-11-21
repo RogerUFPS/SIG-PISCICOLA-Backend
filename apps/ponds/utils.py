@@ -48,6 +48,16 @@ def pond_has_cycles(pond: Pond) -> bool:
     return Cycle.objects.filter(pond=pond, deleted_at__isnull=True).exists()
 
 
+def pond_has_active_cycle(pond: Pond) -> bool:
+    from apps.cycle.models import Cycle
+
+    return Cycle.objects.filter(
+        pond=pond,
+        deleted_at__isnull=True,
+        state__in=[Cycle.State.IN_PROGRESS, Cycle.State.PAUSED],
+    ).exists()
+
+
 def get_pond_members(pond: Pond):
     return UserFarmPond.objects.filter(pond=pond).select_related("user")
 

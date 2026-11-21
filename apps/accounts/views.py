@@ -70,6 +70,7 @@ def get_pending_invitation(invitation_id, user):
 
 
 class ChangePasswordView(APIView):
+    serializer_class = ChangePasswordSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -86,6 +87,7 @@ class ChangePasswordView(APIView):
 
 
 class LoginView(APIView):
+    serializer_class = LoginSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
@@ -114,6 +116,7 @@ class SessionTokenRefreshView(APIView):
 
 
 class LogoutView(APIView):
+    serializer_class = SessionTokenRefreshSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
@@ -149,6 +152,7 @@ class LogoutView(APIView):
 
 
 class CompleteProfileView(APIView):
+    serializer_class = CompleteProfileSerializer
     permission_classes = [IsAdminOrValid]
 
     def post(self, request):
@@ -170,6 +174,7 @@ class CompleteProfileView(APIView):
 
 
 class InviteProductorView(APIView):
+    serializer_class = InviteProductorSerializer
     permission_classes = [IsAdmin]
 
     def post(self, request):
@@ -188,6 +193,7 @@ class InviteProductorView(APIView):
 
 
 class InviteOperarioView(APIView):
+    serializer_class = InviteOperarioSerializer
     permission_classes = [AdminOr(CanManageFarmUsers)]
     permission_app = "farm_users"
 
@@ -239,6 +245,7 @@ class InvitationDetailView(generics.RetrieveAPIView):
 
 
 class AcceptInvitationView(APIView):
+    serializer_class = InvitationSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
@@ -256,6 +263,7 @@ class AcceptInvitationView(APIView):
 
 
 class RejectInvitationView(APIView):
+    serializer_class = InvitationSerializer
     permission_classes = [IsAdminOrValid]
 
     def post(self, request, pk):
@@ -283,6 +291,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
 
 class UserFarmPermissionsView(APIView):
+    serializer_class = UserFarmPermissionsQuerySerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -332,6 +341,7 @@ class UserFarmPermissionsView(APIView):
 
 
 class ResetPasswordView(APIView):
+    serializer_class = ResetPasswordSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
@@ -355,6 +365,7 @@ class ResetPasswordView(APIView):
 
 
 class ConfirmResetPasswordView(APIView):
+    serializer_class = ConfirmResetPasswordSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 

@@ -12,7 +12,10 @@ class ActiveCycleValidationTests(SimpleTestCase):
         self._assert_second_active_cycle_rejected(Cycle.State.IN_PROGRESS)
 
     def test_rejects_paused_cycle_when_in_progress_cycle_exists(self):
-        self._assert_second_active_cycle_rejected(Cycle.State.PAUSED)
+        with self.assertRaises(serializers.ValidationError):
+            CycleSerializer(context={"pond_id": 20}).validate(
+                {"state": Cycle.State.PAUSED}
+            )
 
     def _assert_second_active_cycle_rejected(self, requested_state):
         active_cycles = MagicMock()

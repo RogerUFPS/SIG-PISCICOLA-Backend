@@ -1,6 +1,5 @@
 import os
 from datetime import timedelta
-from datetime import timedelta
 
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
@@ -35,6 +34,11 @@ DATABASES = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "True") == "True"
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 HOST_URL = os.getenv("HOST_URL") or "https://sig-piscicola-frontend.vercel.app"
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 JWT_IDLE_TIMEOUT = timedelta(
